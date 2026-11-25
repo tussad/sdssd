@@ -1,0 +1,2957 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>IMPASTO HORIZON — 3D Painterly Black Hole Exploration Game</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    :root {
+      --bg: #05060a;
+      --panel: rgba(10, 12, 18, 0.62);
+      --panel-strong: rgba(10, 12, 18, 0.86);
+      --border: rgba(255, 255, 255, 0.14);
+      --accent: #f6c46b;
+      --text: #f3f4f6;
+      --muted: rgba(235, 238, 245, 0.68);
+      --cyan: #38f2ff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+
+    #canvas-container:active {
+      cursor: grabbing;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Subtle cinematic vignette & depth-of-field edge framing */
+    #vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 8;
+      background: radial-gradient(ellipse at 50% 48%, rgba(0,0,0,0) 54%, rgba(3,4,8,0.52) 100%);
+    }
+
+    /* Cinematic fade overlay on realm switch */
+    #fade-overlay {
+      position: fixed;
+      inset: 0;
+      background: #030407;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.45s ease;
+      z-index: 40;
+    }
+
+    /* Split-screen Wireframe Divider */
+    #split-line {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 2px;
+      background: linear-gradient(180deg, rgba(56, 242, 255, 0.2), var(--cyan), rgba(56, 242, 255, 0.2));
+      box-shadow: 0 0 18px rgba(56, 242, 255, 0.8);
+      z-index: 15;
+      display: none;
+      pointer-events: none;
+    }
+
+    #split-handle {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(6, 16, 24, 0.88);
+      border: 1.5px solid var(--cyan);
+      color: var(--cyan);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: ew-resize;
+      z-index: 25;
+      box-shadow: 0 0 20px rgba(56, 242, 255, 0.45);
+      touch-action: none;
+    }
+
+    .split-badge {
+      position: fixed;
+      top: 86px;
+      padding: 5px 11px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      border-radius: 4px;
+      backdrop-filter: blur(8px);
+      display: none;
+      z-index: 16;
+      pointer-events: none;
+    }
+
+    #badge-wire {
+      left: 16px;
+      background: rgba(4, 24, 34, 0.78);
+      border: 1px solid rgba(56, 242, 255, 0.55);
+      color: var(--cyan);
+    }
+
+    #badge-paint {
+      right: 68px;
+      background: rgba(24, 16, 8, 0.78);
+      border: 1px solid rgba(246, 196, 107, 0.55);
+      color: var(--accent);
+    }
+
+    /* Top HUD */
+    #top-bar {
+      position: fixed;
+      top: 14px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      z-index: 20;
+      pointer-events: none;
+    }
+
+    .hud-card {
+      pointer-events: auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 10px;
+      padding: 10px 14px;
+    }
+
+    .title-block {
+      max-width: 340px;
+    }
+
+    .eyebrow {
+      font-size: 9.5px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 3px;
+    }
+
+    .realm-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      line-height: 1.15;
+      font-family: Georgia, 'Times New Roman', serif;
+    }
+
+    .realm-subtitle {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-top: 3px;
+      line-height: 1.35;
+    }
+
+    .controls-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .hud-btn {
+      pointer-events: auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 7px 11px;
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      transition: all 0.2s ease;
+    }
+
+    .hud-btn:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.34);
+    }
+
+    .hud-btn.active {
+      background: rgba(246, 196, 107, 0.2);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .hud-btn.cyan-active {
+      background: rgba(56, 242, 255, 0.18);
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+
+    .shard-pill {
+      pointer-events: auto;
+      background: rgba(246, 196, 107, 0.12);
+      border: 1px solid rgba(246, 196, 107, 0.42);
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      backdrop-filter: blur(12px);
+    }
+
+    /* Right Cinematic Lens Slider (The Horizons style) */
+    #lens-panel {
+      position: fixed;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      z-index: 20;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      border-radius: 22px;
+      padding: 12px 8px;
+    }
+
+    .lens-label {
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    #lens-value {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+
+    #lens-slider {
+      writing-mode: vertical-lr;
+      direction: rtl;
+      width: 20px;
+      height: 150px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* Telemetry Bottom Left (The Horizons style) */
+    #telemetry {
+      position: fixed;
+      left: 16px;
+      bottom: 18px;
+      z-index: 20;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 10.5px;
+      line-height: 1.6;
+      color: rgba(240, 242, 248, 0.8);
+      background: rgba(6, 8, 13, 0.52);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(8px);
+      border-radius: 8px;
+      padding: 8px 12px;
+      pointer-events: none;
+    }
+
+    #telemetry span.k {
+      color: var(--muted);
+      margin-right: 4px;
+    }
+
+    #telemetry span.v {
+      color: #ffffff;
+      font-weight: 600;
+      margin-right: 10px;
+    }
+
+    /* Bottom Realm Dock */
+    #realm-dock {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      z-index: 20;
+      max-width: calc(100vw - 32px);
+      overflow-x: auto;
+      padding: 6px;
+      background: rgba(8, 10, 16, 0.68);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-radius: 14px;
+    }
+
+    .realm-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 8px 12px;
+      color: var(--text);
+      cursor: pointer;
+      text-align: left;
+      min-width: 148px;
+      transition: all 0.22s ease;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-shrink: 0;
+    }
+
+    .realm-btn:hover {
+      background: rgba(255, 255, 255, 0.11);
+      transform: translateY(-1px);
+    }
+
+    .realm-btn.active {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: var(--accent);
+      box-shadow: 0 0 18px rgba(246, 196, 107, 0.18);
+    }
+
+    .realm-swatch {
+      width: 14px;
+      height: 30px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+
+    .realm-meta {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .realm-name {
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .realm-tag {
+      font-size: 10px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Summit Sit Prompt */
+    #sit-prompt {
+      position: fixed;
+      bottom: 96px;
+      left: 50%;
+      transform: translateX(-50%) translateY(8px);
+      background: rgba(12, 15, 24, 0.84);
+      border: 1px solid rgba(246, 196, 107, 0.58);
+      border-radius: 999px;
+      padding: 8px 18px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--accent);
+      backdrop-filter: blur(10px);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.28s ease;
+      z-index: 26;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      white-space: nowrap;
+    }
+
+    #sit-prompt.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Poetic Toast Notification */
+    #toast {
+      position: fixed;
+      top: 96px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-10px);
+      background: var(--panel-strong);
+      border: 1px solid rgba(246, 196, 107, 0.5);
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-size: 13px;
+      text-align: center;
+      max-width: 420px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.35s ease;
+      z-index: 30;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    #toast .toast-title {
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 3px;
+      font-weight: 700;
+    }
+
+    /* Help / Victory Modal */
+    #modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 5, 10, 0.74);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 16px;
+    }
+
+    #modal-backdrop.hidden {
+      display: none;
+    }
+
+    .modal-box {
+      width: 100%;
+      max-width: 480px;
+      background: rgba(12, 15, 24, 0.94);
+      border: 1px solid rgba(246, 196, 107, 0.35);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+    }
+
+    .modal-box h2 {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 24px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .modal-box p {
+      font-size: 13.5px;
+      line-height: 1.55;
+      color: rgba(235, 238, 245, 0.85);
+      margin-bottom: 14px;
+    }
+
+    .key-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .key-item {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .kbd {
+      background: rgba(246, 196, 107, 0.16);
+      border: 1px solid rgba(246, 196, 107, 0.4);
+      color: var(--accent);
+      border-radius: 5px;
+      padding: 2px 6px;
+      font-family: monospace;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .primary-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #f6c46b, #d88f38);
+      color: #111318;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: transform 0.15s ease, filter 0.15s ease;
+    }
+
+    .primary-btn:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+
+    /* Mobile Touch Controls */
+    #touch-controls {
+      position: fixed;
+      bottom: 94px;
+      left: 16px;
+      right: 16px;
+      display: none;
+      justify-content: space-between;
+      align-items: flex-end;
+      pointer-events: none;
+      z-index: 22;
+    }
+
+    .dpad {
+      display: grid;
+      grid-template-columns: repeat(3, 44px);
+      grid-template-rows: repeat(2, 44px);
+      gap: 5px;
+      pointer-events: auto;
+    }
+
+    .touch-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: rgba(10, 12, 18, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+    }
+
+    .touch-btn:active {
+      background: rgba(246, 196, 107, 0.35);
+      border-color: var(--accent);
+    }
+
+    .touch-actions {
+      display: flex;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    .touch-pill {
+      height: 44px;
+      padding: 0 16px;
+      border-radius: 22px;
+      background: rgba(246, 196, 107, 0.22);
+      border: 1px solid rgba(246, 196, 107, 0.55);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      touch-action: none;
+    }
+
+    @media (max-width: 900px) {
+      #telemetry {
+        display: none;
+      }
+      .realm-btn {
+        min-width: 126px;
+        padding: 7px 10px;
+      }
+      #lens-panel {
+        right: 10px;
+        padding: 8px 6px;
+      }
+      #lens-slider {
+        height: 110px;
+      }
+    }
+
+    @media (hover: none) and (pointer: coarse) {
+      #touch-controls {
+        display: flex;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  <div id="vignette"></div>
+  <div id="fade-overlay"></div>
+
+  <!-- Split-Screen Wireframe Inspector -->
+  <div id="split-line"></div>
+  <div id="split-handle" title="Kéo để so sánh Wireframe & Sơn dầu">⇄</div>
+  <div id="badge-wire" class="split-badge">RAW 3D WIREFRAME STROKES</div>
+  <div id="badge-paint" class="split-badge">PAINTED IMPASTO OIL</div>
+
+  <!-- Top HUD -->
+  <div id="top-bar">
+    <div class="hud-card title-block">
+      <div class="eyebrow">IMPASTO HORIZON • WEBGL 3D</div>
+      <div class="realm-title" id="realm-title">Aurum Horizon</div>
+      <div class="realm-subtitle" id="realm-subtitle">Trang trại cuối cùng trước chân trời sự kiện, vẽ bằng 14.400 nét cọ sơn dầu.</div>
+    </div>
+
+    <div class="controls-strip">
+      <div class="shard-pill" id="shard-counter" title="Mảnh ánh sáng đã thu thập">✦ 0 / 12</div>
+      <button class="hud-btn" id="btn-summit" title="Lên đỉnh núi & Ngồi ngắm cảnh (Phím E)">▲ Đỉnh Núi (E)</button>
+      <button class="hud-btn" id="btn-split" title="So sánh lưới Wireframe & Tranh sơn dầu (Phím X)">◧ X-Ray Split</button>
+      <button class="hud-btn" id="btn-cinematic" title="Chế độ quay phim điện ảnh tự động (Phím C)">◎ Orbit</button>
+      <button class="hud-btn" id="btn-sound" title="Bật/Tắt nhạc Piano & Sáo Ambient (Phím M)">♪ Sound: OFF</button>
+      <button class="hud-btn" id="btn-help" title="Hướng dẫn điều khiển">?</button>
+    </div>
+  </div>
+
+  <!-- Right Cinematic Lens Focal Length Slider -->
+  <div id="lens-panel" title="Tiêu cự ống kính điện ảnh (24mm - 85mm)">
+    <div class="lens-label">LENS</div>
+    <div id="lens-value">42mm</div>
+    <input type="range" id="lens-slider" min="24" max="85" step="1" value="42" />
+    <div class="lens-label">FOV</div>
+  </div>
+
+  <!-- Summit Sit Prompt -->
+  <div id="sit-prompt">Nhấn <strong>[E]</strong> để ngồi ngắm cảnh trên đỉnh núi</div>
+
+  <!-- Poetic Notification Toast -->
+  <div id="toast">
+    <div class="toast-title" id="toast-title">LUMEN SHARD COLLECTED</div>
+    <div id="toast-body">Ánh sáng uốn cong quanh chân trời sự kiện.</div>
+  </div>
+
+  <!-- Sci-Fi Telemetry -->
+  <div id="telemetry">
+    <div><span class="k">ALT</span><span class="v" id="tel-alt">2.40 M</span><span class="k">HORIZON</span><span class="v" id="tel-rs">17.8 Rs</span></div>
+    <div><span class="k">T</span><span class="v" id="tel-time">00:00:00</span><span class="k">FPS</span><span class="v" id="tel-fps">60</span><span class="k">STROKES</span><span class="v" id="tel-strokes">14,400</span></div>
+  </div>
+
+  <!-- Bottom 4-Realm Dock -->
+  <div id="realm-dock">
+    <button class="realm-btn active" data-realm="0">
+      <div class="realm-swatch" style="background: linear-gradient(180deg, #ffbf57, #9c4a12);"></div>
+      <div class="realm-meta">
+        <span class="realm-name">1. Aurum Horizon</span>
+        <span class="realm-tag">Lúa mì vàng • Hố đen hổ phách</span>
+      </div>
+    </button>
+    <button class="realm-btn" data-realm="1">
+      <div class="realm-swatch" style="background: linear-gradient(180deg, #e8d8ff, #5c3a8e);"></div>
+      <div class="realm-meta">
+        <span class="realm-name">2. Viola Cosmos</span>
+        <span class="realm-tag">Cánh đồng tím • Vòng cung trắng</span>
+      </div>
+    </button>
+    <button class="realm-btn" data-realm="2">
+      <div class="realm-swatch" style="background: linear-gradient(180deg, #2d74ff, #f7d559);"></div>
+      <div class="realm-meta">
+        <span class="realm-name">3. Starry Cobalt</span>
+        <span class="realm-tag">Đêm Van Gogh • Hải đăng sóng vỗ</span>
+      </div>
+    </button>
+    <button class="realm-btn" data-realm="3">
+      <div class="realm-swatch" style="background: linear-gradient(180deg, #ff4526, #3d090c);"></div>
+      <div class="realm-meta">
+        <span class="realm-name">4. Crimson Tempest</span>
+        <span class="realm-tag">Bão đỏ rực • Cối xay gió xoáy</span>
+      </div>
+    </button>
+  </div>
+
+  <!-- Touch Controls for Mobile -->
+  <div id="touch-controls">
+    <div class="dpad">
+      <div></div>
+      <button class="touch-btn" id="t-up">▲</button>
+      <div></div>
+      <button class="touch-btn" id="t-left">◀</button>
+      <button class="touch-btn" id="t-down">▼</button>
+      <button class="touch-btn" id="t-right">▶</button>
+    </div>
+    <div class="touch-actions">
+      <button class="touch-pill" id="t-sit">NGỒI</button>
+      <button class="touch-pill" id="t-sprint">LƯỚT</button>
+      <button class="touch-pill" id="t-jump">NHẢY</button>
+    </div>
+  </div>
+
+  <!-- Intro / Victory / Help Modal -->
+  <div id="modal-backdrop">
+    <div class="modal-box">
+      <h2 id="modal-title">IMPASTO HORIZON</h2>
+      <p id="modal-desc">
+        Khám phá mũi đất sơn dầu 3D nằm ngay rìa chân trời sự kiện của hố đen Gargantua.
+        Thu thập đủ <strong>12 Mảnh Ánh Sáng (Lumen Shards)</strong> rải rác quanh ngôi nhà gỗ, xe bán tải, cối xay gió và ngọn hải đăng để kích hoạt sự kiện <em>Singularity Bloom</em>.
+      </p>
+      <div class="key-grid">
+        <div class="key-item"><span class="kbd">W A S D</span> Di chuyển theo góc nhìn</div>
+        <div class="key-item"><span class="kbd">Shift / Space</span> Chạy / Nhảy nhẹ</div>
+        <div class="key-item"><span class="kbd">Kéo chuột</span> Xoay góc nhìn 360°</div>
+        <div class="key-item"><span class="kbd">Phím X</span> Kéo so sánh Wireframe</div>
+        <div class="key-item"><span class="kbd">Phím 1–4</span> Đổi 4 thế giới</div>
+        <div class="key-item"><span class="kbd">Phím E</span> Ngồi ngắm cảnh đỉnh núi</div>
+      </div>
+      <button class="primary-btn" id="btn-start">BẮT ĐẦU KHÁM PHÁ &amp; BẬT NHẠC</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // =========================================================================
+      // 1. REALM PALETTES
+      // =========================================================================
+      const REALMS = [
+        {
+          id: 'aurum',
+          name: 'Aurum Horizon',
+          subtitle: 'Trang trại cuối cùng trước chân trời sự kiện, vẽ bằng 14.400 nét cọ sơn dầu.',
+          bgTop: 0x040201,
+          bgMid: 0x160a03,
+          bgHorizon: 0x452008,
+          fogColor: 0x221005,
+          fogDensity: 0.0046,
+          diskInner: new THREE.Color(1.0, 0.96, 0.78),
+          diskOuter: new THREE.Color(0.98, 0.46, 0.09),
+          grassBase: new THREE.Color(0x4a2909),
+          grassTip: new THREE.Color(0xf6b94c),
+          grassAlt: new THREE.Color(0xffdfa0),
+          groundColor: 0x2e1a08,
+          waterDeep: new THREE.Color(0x120904),
+          waterGlow: new THREE.Color(0xf2a841),
+          skyStrokeA: new THREE.Color(0xffcf6e),
+          skyStrokeB: new THREE.Color(0x8c3c0e),
+          mistColor: new THREE.Color(0xffb454),
+          dustColor: 0xffe2a3,
+          sunColor: 0xffd284,
+          hemiSky: 0xffd28a,
+          hemiGround: 0x2b1707,
+          capeColor: 0xd94826,
+          capeEmissive: 0x8f220c,
+          windStrength: 1.0,
+          rsBase: 17.8,
+          chord: [220.0, 261.63, 329.63, 440.0, 523.25]
+        },
+        {
+          id: 'viola',
+          name: 'Viola Cosmos',
+          subtitle: 'Cánh đồng hoa tím bạt ngàn dưới vòng cung sáng chói của đĩa bồi tụ.',
+          bgTop: 0x070512,
+          bgMid: 0x1e1833,
+          bgHorizon: 0x4a3d66,
+          fogColor: 0x2a2342,
+          fogDensity: 0.0052,
+          diskInner: new THREE.Color(1.0, 0.99, 0.94),
+          diskOuter: new THREE.Color(0xdcc7ff),
+          grassBase: new THREE.Color(0x22143d),
+          grassTip: new THREE.Color(0x9470ed),
+          grassAlt: new THREE.Color(0xe3d1ff),
+          groundColor: 0x1c1330,
+          waterDeep: new THREE.Color(0x140f26),
+          waterGlow: new THREE.Color(0xd5c4ff),
+          skyStrokeA: new THREE.Color(0xf5e9ff),
+          skyStrokeB: new THREE.Color(0x7552b8),
+          mistColor: new THREE.Color(0xcab8ff),
+          dustColor: 0xf0e4ff,
+          sunColor: 0xfff0d9,
+          hemiSky: 0xd8c6ff,
+          hemiGround: 0x1d1333,
+          capeColor: 0x7e54d9,
+          capeEmissive: 0x3b1f82,
+          windStrength: 0.85,
+          rsBase: 22.4,
+          chord: [196.0, 246.94, 293.66, 392.0, 493.88]
+        },
+        {
+          id: 'cobalt',
+          name: 'Starry Cobalt',
+          subtitle: 'Đêm xoáy sơn dầu kiểu Van Gogh trên mũi hải đăng và sóng biển xanh lam.',
+          bgTop: 0x020817,
+          bgMid: 0x0a1e47,
+          bgHorizon: 0x1b4587,
+          fogColor: 0x0c2147,
+          fogDensity: 0.0044,
+          diskInner: new THREE.Color(1.0, 0.96, 0.64),
+          diskOuter: new THREE.Color(0x2e8eff),
+          grassBase: new THREE.Color(0x0f2544),
+          grassTip: new THREE.Color(0xdba839),
+          grassAlt: new THREE.Color(0x5ec2ff),
+          groundColor: 0x112038,
+          waterDeep: new THREE.Color(0x061633),
+          waterGlow: new THREE.Color(0x52adff),
+          skyStrokeA: new THREE.Color(0xffe169),
+          skyStrokeB: new THREE.Color(0x2f89ff),
+          mistColor: new THREE.Color(0x58a8ff),
+          dustColor: 0xffe885,
+          sunColor: 0xffe484,
+          hemiSky: 0x7cb8ff,
+          hemiGround: 0x0d1b33,
+          capeColor: 0xf0a830,
+          capeEmissive: 0x9c5a0c,
+          windStrength: 1.25,
+          rsBase: 14.2,
+          chord: [174.61, 220.0, 261.63, 349.23, 440.0]
+        },
+        {
+          id: 'crimson',
+          name: 'Crimson Tempest',
+          subtitle: 'Cơn bão đỏ rực quét qua cối xay gió khi lực hấp dẫn đạt cực đại.',
+          bgTop: 0x100204,
+          bgMid: 0x2e0708,
+          bgHorizon: 0x69140c,
+          fogColor: 0x330807,
+          fogDensity: 0.0056,
+          diskInner: new THREE.Color(1.0, 0.85, 0.48),
+          diskOuter: new THREE.Color(0xff2b1a),
+          grassBase: new THREE.Color(0x2b0806),
+          grassTip: new THREE.Color(0xed4e28),
+          grassAlt: new THREE.Color(0xffb547),
+          groundColor: 0x210806,
+          waterDeep: new THREE.Color(0x1f0505),
+          waterGlow: new THREE.Color(0xff592b),
+          skyStrokeA: new THREE.Color(0xff9233),
+          skyStrokeB: new THREE.Color(0xb81414),
+          mistColor: new THREE.Color(0xff5b33),
+          dustColor: 0xffb36b,
+          sunColor: 0xff7542,
+          hemiSky: 0xff7b4d,
+          hemiGround: 0x260705,
+          capeColor: 0xff3b26,
+          capeEmissive: 0x9e1508,
+          windStrength: 1.95,
+          rsBase: 9.6,
+          chord: [164.81, 196.0, 246.94, 329.63, 392.0]
+        }
+      ];
+
+      const SHARD_LORE = [
+        '“Ánh sáng không biến mất — nó chỉ uốn cong thành một nét cọ quanh hố đen.”',
+        '“Ngôi nhà gỗ vẫn sáng đèn dù thời gian bên ngoài đã trôi qua nhiều thập kỷ.”',
+        '“Gió thổi qua 12.000 nét sơn dầu, mang theo bụi sao của đĩa bồi tụ.”',
+        '“Chiếc xe bán tải dừng lại đúng nơi con đường chạm tới chân trời sự kiện.”',
+        '“Cối xay gió quay chậm hơn khi lực hấp dẫn kéo giãn từng giây.”',
+        '“Ngọn hải đăng không dẫn lối cho tàu thuyền, mà dẫn lối cho những giấc mơ.”',
+        '“Trên mặt nước phản chiếu, bầu trời Van Gogh hòa làm một với Gargantua.”',
+        '“Mỗi cánh hoa tím ở Viola lưu giữ một nhịp đàn piano từ quá khứ.”',
+        '“Khi kéo thanh X-Ray, ta thấy hình học nguyên thủy ẩn dưới lớp sơn dầu.”',
+        '“Trọng lực nhẹ bẫng cho phép bước chân lướt qua những ngọn đồi vàng.”',
+        '“Chỉ còn một mảnh ánh sáng nữa để đánh thức cộng hưởng kỳ dị.”',
+        '“SINGULARITY BLOOM! Bạn đã hợp nhất toàn bộ ánh sáng của Impasto Horizon!”'
+      ];
+
+      // =========================================================================
+      // 2. AUDIO ENGINE (Web Audio API: Interstellar Piano + Impasto Flute Pad)
+      // =========================================================================
+      class AmbientAudio {
+        constructor() {
+          this.ctx = null;
+          this.master = null;
+          this.enabled = false;
+          this.timer = null;
+          this.step = 0;
+          this.currentRealm = 0;
+        }
+
+        init() {
+          if (this.ctx) return;
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return;
+          this.ctx = new AudioCtx();
+          this.master = this.ctx.createGain();
+          this.master.gain.value = 0.28;
+          this.master.connect(this.ctx.destination);
+        }
+
+        toggle(forceOn) {
+          this.init();
+          if (!this.ctx) return false;
+          if (this.ctx.state === 'suspended') this.ctx.resume();
+
+          this.enabled = typeof forceOn === 'boolean' ? forceOn : !this.enabled;
+          if (this.enabled) {
+            this.master.gain.setTargetAtTime(0.28, this.ctx.currentTime, 0.2);
+            if (!this.timer) {
+              this.playStep();
+              this.timer = setInterval(() => this.playStep(), 520);
+            }
+          } else {
+            this.master.gain.setTargetAtTime(0.0001, this.ctx.currentTime, 0.25);
+          }
+          return this.enabled;
+        }
+
+        playPianoNote(freq, dur, vol) {
+          if (!this.ctx || !this.enabled) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const osc2 = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          const filter = this.ctx.createBiquadFilter();
+
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now);
+          osc2.type = 'sine';
+          osc2.frequency.setValueAtTime(freq * 2, now);
+
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(1600, now);
+          filter.frequency.exponentialRampToValueAtTime(420, now + dur);
+
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.linearRampToValueAtTime(vol, now + 0.025);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + dur);
+
+          osc.connect(filter);
+          osc2.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.master);
+
+          osc.start(now);
+          osc2.start(now);
+          osc.stop(now + dur + 0.05);
+          osc2.stop(now + dur + 0.05);
+        }
+
+        playFlutePad(freq, dur) {
+          if (!this.ctx || !this.enabled) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const lfo = this.ctx.createOscillator();
+          const lfoGain = this.ctx.createGain();
+          const gain = this.ctx.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now);
+
+          lfo.frequency.setValueAtTime(4.8, now);
+          lfoGain.gain.setValueAtTime(freq * 0.009, now);
+          lfo.connect(lfoGain);
+          lfoGain.connect(osc.frequency);
+
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.linearRampToValueAtTime(0.065, now + 0.55);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + dur);
+
+          osc.connect(gain);
+          gain.connect(this.master);
+
+          osc.start(now);
+          lfo.start(now);
+          osc.stop(now + dur + 0.1);
+          lfo.stop(now + dur + 0.1);
+        }
+
+        playStep() {
+          if (!this.enabled || !this.ctx) return;
+          const chord = REALMS[this.currentRealm].chord;
+          const pattern = [0, 2, 4, 2, 1, 3, 4, 3];
+          const note = chord[pattern[this.step % pattern.length]];
+          this.playPianoNote(note, 2.2, 0.14);
+
+          if (this.step % 4 === 0) {
+            this.playPianoNote(chord[0] * 0.5, 3.6, 0.18);
+          }
+          if (this.step % 8 === 2) {
+            this.playFlutePad(chord[3] * 1.5, 3.2);
+          }
+          this.step++;
+        }
+
+        playCollect(count) {
+          if (!this.ctx || !this.enabled) return;
+          const base = 523.25 * Math.pow(1.04, count % 8);
+          this.playPianoNote(base, 1.4, 0.24);
+          setTimeout(() => this.playPianoNote(base * 1.25, 1.6, 0.2), 90);
+          setTimeout(() => this.playPianoNote(base * 1.5, 2.0, 0.18), 180);
+        }
+
+        playJump() {
+          if (!this.ctx || !this.enabled) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(180, now);
+          osc.frequency.exponentialRampToValueAtTime(340, now + 0.16);
+          gain.gain.setValueAtTime(0.09, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+          osc.connect(gain);
+          gain.connect(this.master);
+          osc.start(now);
+          osc.stop(now + 0.2);
+        }
+      }
+
+      const audio = new AmbientAudio();
+
+      // =========================================================================
+      // 3. TERRAIN MATH
+      // =========================================================================
+      const SUMMIT_X = -5;
+      const SUMMIT_Z = 24;
+
+      function getTerrainHeight(x, z) {
+        const dist = Math.sqrt(x * x + z * z);
+        const hill1 = Math.sin(x * 0.055) * Math.cos(z * 0.055) * 3.4;
+        const hill2 = Math.sin(x * 0.13 + 1.2) * Math.sin(z * 0.11 - 0.6) * 1.1;
+        const ridge = Math.exp(-Math.pow((x - 16) * 0.055, 2) - Math.pow((z + 10) * 0.055, 2)) * 5.0;
+        const cliff = Math.exp(-Math.pow((x + 22) * 0.07, 2) - Math.pow((z + 18) * 0.07, 2)) * 6.2;
+
+        // Grand Horizon Summit Peak with a flat rocky overlook plateau at the top
+        const dxS = x - SUMMIT_X;
+        const dzS = z - SUMMIT_Z;
+        const dSummit = Math.hypot(dxS, dzS);
+        const peakCore = Math.exp(-Math.pow(dSummit / 15.5, 2)) * 16.2;
+        // Walkable ridge ramp coming from the north-east meadow so player can climb up smoothly
+        const ramp = Math.exp(-Math.pow((x - 4) / 10.5, 2) - Math.pow((z - 15) / 11.5, 2)) * 6.8;
+        // Flatten the very top slightly into a cozy lookout ledge
+        const peakWithPlateau = dSummit < 2.6 ? Math.min(peakCore, 15.65) : peakCore;
+
+        const islandMask = 1.0 - Math.min(1.0, Math.pow(dist / 56, 2.8));
+        return (hill1 + hill2 + ridge + cliff + peakWithPlateau + ramp + 3.0) * islandMask - (1.0 - islandMask) * 3.4;
+      }
+
+      // =========================================================================
+      // 4. MAIN THREE.JS INITIALIZATION
+      // =========================================================================
+      const container = document.getElementById('canvas-container');
+      let renderer, scene, wireScene, camera;
+      let dirLight, rimLight, hemiLight, playerLight;
+      let blackHoleMat, waterMat, grassMat, skyStrokeMat, terrainMat, mistMat, dustParticles;
+      let windmillBlades, lighthouseBeam, summitFlagMesh, summitFlagBasePos, summitRockGroup;
+      let shards = [];
+      let bloomBurstParticles;
+
+      // Detailed Character Parts
+      let playerGroup, bodyPivot, headGroup, leftArm, rightArm, leftLeg, rightLeg;
+      let sitBlend = 0;
+      let capeMesh, capeBasePos, scarfMesh, companionOrb, trailMesh, trailPositions;
+      let capeMatRef;
+
+      // Game State
+      let currentRealmIdx = 0;
+      let splitMode = false;
+      let splitRatio = 0.5;
+      let cinematicMode = false;
+      let gameStarted = false;
+      let collectedCount = 0;
+      let singularityUnlocked = false;
+      let startTimeMs = performance.now();
+
+      // Player Physics & Camera (Fixed camera-relative movement & smooth inertia)
+      const player = {
+        pos: new THREE.Vector3(2, 6, 10),
+        vel: new THREE.Vector3(0, 0, 0),
+        yaw: 0, // 0 means facing -Z (toward the Black Hole)
+        onGround: true,
+        speedRatio: 0,
+        walkCycle: 0,
+        isSitting: false
+      };
+
+      // Camera spherical coordinates around player (camYaw=0 places camera behind player at +Z looking toward -Z Black Hole)
+      let camYaw = 0;
+      let camPitch = 0.17; // Lower cinematic pitch for greater horizon depth
+      let camDist = 8.6;
+      let targetFov = 54;
+      const smoothCamPos = new THREE.Vector3(0, 8, 24);
+      const smoothLookAt = new THREE.Vector3(0, 5, 10);
+
+      const keys = {
+        w: false, a: false, s: false, d: false,
+        shift: false, space: false
+      };
+
+      function clearAllKeys() {
+        keys.w = false;
+        keys.a = false;
+        keys.s = false;
+        keys.d = false;
+        keys.shift = false;
+        keys.space = false;
+      }
+
+      function initEngine() {
+        renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.18;
+        container.appendChild(renderer.domElement);
+
+        scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(REALMS[0].fogColor, REALMS[0].fogDensity);
+
+        wireScene = new THREE.Scene();
+        wireScene.background = new THREE.Color(0x030c14);
+        wireScene.fog = new THREE.FogExp2(0x030c14, 0.0075);
+
+        camera = new THREE.PerspectiveCamera(54, container.clientWidth / container.clientHeight, 0.2, 900);
+
+        // 3-Point Atmospheric Lighting (Front/Horizon Key + Warm Back Rim + Sky Hemisphere)
+        hemiLight = new THREE.HemisphereLight(REALMS[0].hemiSky, REALMS[0].hemiGround, 0.95);
+        scene.add(hemiLight);
+
+        dirLight = new THREE.DirectionalLight(REALMS[0].sunColor, 1.85);
+        dirLight.position.set(0, 46, -150);
+        scene.add(dirLight);
+
+        rimLight = new THREE.DirectionalLight(0x88b4ff, 0.55);
+        rimLight.position.set(45, 25, 80);
+        scene.add(rimLight);
+
+        buildBlackHoleAndSky();
+        buildDistantIslandsAndMist();
+        buildTerrainAndWater();
+        buildImpastoGrass();
+        buildSkyBrushStrokes();
+        buildAtmosphericDust();
+        buildLandmarks();
+        buildDetailedPlayer();
+        buildLumenShards();
+        buildWireframeMirror();
+
+        // Position camera immediately behind player facing the black hole
+        smoothCamPos.set(player.pos.x, player.pos.y + 3.8, player.pos.z + camDist);
+        smoothLookAt.set(player.pos.x, player.pos.y + 2.2, player.pos.z - 6);
+        camera.position.copy(smoothCamPos);
+        camera.lookAt(smoothLookAt);
+
+        applyRealmImmediate(0);
+        setupEvents();
+        animate();
+      }
+
+      // =========================================================================
+      // 5. DEEP GARGANTUA BLACK HOLE, MULTI-LAYER SKY & PARALLAX STARFIELD
+      // =========================================================================
+      function buildBlackHoleAndSky() {
+        // 3-stop atmospheric sky dome for deep horizon gradient
+        const skyGeo = new THREE.SphereGeometry(620, 36, 24);
+        const skyMat = new THREE.ShaderMaterial({
+          side: THREE.BackSide,
+          depthWrite: false,
+          uniforms: {
+            uTop: { value: new THREE.Color(REALMS[0].bgTop) },
+            uMid: { value: new THREE.Color(REALMS[0].bgMid) },
+            uHorizon: { value: new THREE.Color(REALMS[0].bgHorizon) }
+          },
+          vertexShader: `
+            varying vec3 vDir;
+            void main() {
+              vDir = normalize(position);
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform vec3 uTop;
+            uniform vec3 uMid;
+            uniform vec3 uHorizon;
+            varying vec3 vDir;
+            void main() {
+              float h = clamp(vDir.y, 0.0, 1.0);
+              vec3 lowToMid = mix(uHorizon, uMid, smoothstep(0.0, 0.24, h));
+              vec3 col = mix(lowToMid, uTop, smoothstep(0.18, 0.78, h));
+              // Subtle galactic glow toward the black hole (-Z)
+              float bhAlign = max(0.0, -vDir.z) * exp(-abs(vDir.y - 0.12) * 5.2);
+              col += uHorizon * bhAlign * 0.55;
+              gl_FragColor = vec4(col, 1.0);
+            }
+          `
+        });
+        const skyDome = new THREE.Mesh(skyGeo, skyMat);
+        skyDome.name = 'skyDome';
+        scene.add(skyDome);
+
+        // Gargantua Black Hole Shader Billboard (Grand, deep, multi-band relativistic disk)
+        const bhGeo = new THREE.PlaneGeometry(490, 290);
+        blackHoleMat = new THREE.ShaderMaterial({
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          uniforms: {
+            uTime: { value: 0 },
+            uInnerColor: { value: REALMS[0].diskInner.clone() },
+            uOuterColor: { value: REALMS[0].diskOuter.clone() },
+            uBloomBoost: { value: 1.0 }
+          },
+          vertexShader: `
+            varying vec2 vUv;
+            void main() {
+              vUv = uv;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform float uTime;
+            uniform vec3 uInnerColor;
+            uniform vec3 uOuterColor;
+            uniform float uBloomBoost;
+            varying vec2 vUv;
+
+            float hash(vec2 p) {
+              return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+            }
+
+            float noise(vec2 p) {
+              vec2 i = floor(p);
+              vec2 f = fract(p);
+              f = f * f * (3.0 - 2.0 * f);
+              return mix(
+                mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+                mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+                f.y
+              );
+            }
+
+            float fbm(vec2 p) {
+              float v = 0.0;
+              float a = 0.5;
+              for (int i = 0; i < 4; i++) {
+                v += a * noise(p);
+                p *= 2.05;
+                a *= 0.5;
+              }
+              return v;
+            }
+
+            void main() {
+              vec2 p = (vUv - vec2(0.5, 0.43)) * vec2(2.85, 1.68);
+              float r = length(p);
+              float angle = atan(p.y, p.x);
+
+              float holeR = 0.36;
+
+              // Sharp inner photon ring + gravitational lensing halo
+              float photonRing = exp(-abs(r - holeR * 1.09) * 24.0) * 1.85;
+              float upperArc = exp(-abs(r - holeR * 1.24) * 6.8) * smoothstep(-0.2, 0.5, p.y) * 1.25;
+              float lowerArc = exp(-abs(r - holeR * 1.20) * 9.0) * smoothstep(0.15, -0.45, p.y) * 0.72;
+
+              float swirl = fbm(vec2(angle * 3.5 + uTime * 0.28, r * 8.5 - uTime * 0.45));
+              float outerSwirl = fbm(vec2(angle * 6.0 - uTime * 0.18, r * 12.0));
+
+              // Relativistic accretion disk with Doppler brightening on left side
+              float diskY = abs(p.y + 0.045);
+              float diskBand = exp(-diskY * 13.5) * smoothstep(1.44, 0.25, abs(p.x));
+              float diskFilaments = 0.58 + 0.65 * fbm(vec2(p.x * 6.5 - uTime * 0.85, p.y * 26.0));
+              float doppler = 1.18 + 0.42 * smoothstep(0.25, -0.75, p.x);
+              float disk = diskBand * diskFilaments * doppler * 1.38;
+
+              // Vast atmospheric horizon scatter behind the disk
+              float corona = exp(-abs(r - holeR * 1.22) * 2.5) * 0.58 * (0.7 + 0.4 * outerSwirl);
+              float horizonScatter = exp(-abs(p.y + 0.14) * 4.2) * smoothstep(1.45, 0.0, abs(p.x)) * 0.42;
+
+              float intensity = (photonRing + (upperArc + lowerArc) * (0.65 + 0.55 * swirl) + disk + corona + horizonScatter) * uBloomBoost;
+
+              // Front disk passing across the black event horizon shadow
+              float frontDisk = exp(-abs(p.y + 0.05) * 26.0) * smoothstep(0.55, 0.0, abs(p.x)) * diskFilaments * doppler;
+              float holeMask = smoothstep(holeR * 0.94, holeR * 1.06, r);
+              intensity = intensity * holeMask + frontDisk * 1.45 * uBloomBoost;
+
+              vec3 col = mix(uOuterColor, uInnerColor, clamp(intensity * 0.58, 0.0, 1.0));
+              float edgeFade = smoothstep(1.38, 0.72, length(vUv - 0.5) * 2.0);
+              float alpha = clamp(intensity * 0.9, 0.0, 1.0) * edgeFade;
+
+              gl_FragColor = vec4(col * intensity * 0.96, alpha);
+            }
+          `
+        });
+
+        const blackHoleMesh = new THREE.Mesh(bhGeo, blackHoleMat);
+        blackHoleMesh.position.set(0, 56, -280);
+        scene.add(blackHoleMesh);
+
+        // Solid black event horizon core disk
+        const coreGeo = new THREE.CircleGeometry(58, 56);
+        const coreMat = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
+        const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+        coreMesh.position.set(0, 44, -284);
+        scene.add(coreMesh);
+
+        // Deep 2-layer Starfield (far dense stars + mid warm bright stars)
+        const buildStarLayer = (count, minR, maxR, size, opacity, name) => {
+          const pos = new Float32Array(count * 3);
+          for (let i = 0; i < count; i++) {
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(Math.random() * 0.92 + 0.08);
+            const rad = minR + Math.random() * (maxR - minR);
+            pos[i * 3] = rad * Math.sin(phi) * Math.cos(theta);
+            pos[i * 3 + 1] = rad * Math.cos(phi) + 8;
+            pos[i * 3 + 2] = rad * Math.sin(phi) * Math.sin(theta);
+          }
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+          const mat = new THREE.PointsMaterial({
+            color: 0xfff4dc,
+            size,
+            transparent: true,
+            opacity,
+            fog: false
+          });
+          const pts = new THREE.Points(geo, mat);
+          pts.name = name;
+          scene.add(pts);
+        };
+        buildStarLayer(2200, 340, 520, 1.4, 0.85, 'starfieldFar');
+        buildStarLayer(600, 220, 330, 2.2, 0.65, 'starfieldNear');
+      }
+
+      // =========================================================================
+      // 6. DISTANT SILHOUETTE ISLANDS & VOLUMETRIC HORIZON MIST (Layered Depth)
+      // =========================================================================
+      function buildDistantIslandsAndMist() {
+        const rockMat = new THREE.MeshStandardMaterial({
+          color: 0x161214,
+          roughness: 0.96,
+          flatShading: true
+        });
+
+        // Multi-layered distant mountain ranges creating deep horizon parallax
+        const mountainLayers = [
+          // Near-mid silhouettes
+          { x: -92, z: -102, r: 34, h: 32, col: 0x1a131c },
+          { x: 104, z: -112, r: 38, h: 36, col: 0x1a131c },
+          { x: -148, z: -68, r: 28, h: 24, col: 0x171119 },
+          { x: 152, z: -62, r: 30, h: 26, col: 0x171119 },
+          // Far atmospheric mountain peaks framing the Black Hole
+          { x: -64, z: -172, r: 46, h: 48, col: 0x261a26 },
+          { x: 72, z: -178, r: 52, h: 52, col: 0x261a26 },
+          { x: -132, z: -165, r: 48, h: 42, col: 0x221722 },
+          { x: 138, z: -168, r: 48, h: 44, col: 0x221722 },
+          { x: -18, z: -205, r: 42, h: 34, col: 0x2f202c },
+          { x: 26, z: -210, r: 44, h: 36, col: 0x2f202c }
+        ];
+        mountainLayers.forEach((m, i) => {
+          const mat = new THREE.MeshStandardMaterial({
+            color: m.col,
+            roughness: 0.96,
+            flatShading: true
+          });
+          const geo = new THREE.ConeGeometry(m.r, m.h, 6);
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.position.set(m.x, m.h * 0.36 - 4.0, m.z);
+          mesh.scale.set(1.55, 1.0, 0.85);
+          mesh.rotation.y = i * 0.9;
+          scene.add(mesh);
+        });
+
+        // Volumetric drifting mist bands between island and horizon
+        mistMat = new THREE.ShaderMaterial({
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+          uniforms: {
+            uTime: { value: 0 },
+            uColor: { value: REALMS[0].mistColor.clone() }
+          },
+          vertexShader: `
+            varying vec2 vUv;
+            void main() {
+              vUv = uv;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform float uTime;
+            uniform vec3 uColor;
+            varying vec2 vUv;
+            void main() {
+              float xFade = smoothstep(0.0, 0.3, vUv.x) * smoothstep(1.0, 0.7, vUv.x);
+              float yFade = smoothstep(0.0, 0.35, vUv.y) * smoothstep(1.0, 0.15, vUv.y);
+              float wave = 0.65 + 0.35 * sin(vUv.x * 14.0 + uTime * 0.25) * cos(vUv.x * 7.0 - uTime * 0.18);
+              float alpha = xFade * yFade * wave * 0.16;
+              gl_FragColor = vec4(uColor, alpha);
+            }
+          `
+        });
+
+        const mistPlanes = [
+          { z: -85, y: 6, w: 280, h: 26 },
+          { z: -145, y: 12, w: 380, h: 42 }
+        ];
+        mistPlanes.forEach(mp => {
+          const m = new THREE.Mesh(new THREE.PlaneGeometry(mp.w, mp.h), mistMat);
+          m.position.set(0, mp.y, mp.z);
+          scene.add(m);
+        });
+      }
+
+      // =========================================================================
+      // 7. ISLAND TERRAIN & PAINTERLY OCEAN SHADER
+      // =========================================================================
+      let terrainGeo;
+      function buildTerrainAndWater() {
+        terrainGeo = new THREE.PlaneGeometry(128, 128, 96, 96);
+        terrainGeo.rotateX(-Math.PI / 2);
+        const pos = terrainGeo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          const x = pos.getX(i);
+          const z = pos.getZ(i);
+          pos.setY(i, getTerrainHeight(x, z));
+        }
+        terrainGeo.computeVertexNormals();
+
+        terrainMat = new THREE.MeshStandardMaterial({
+          color: REALMS[0].groundColor,
+          roughness: 0.94,
+          metalness: 0.05,
+          flatShading: true
+        });
+        const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+        scene.add(terrain);
+
+        // Painterly Animated Ocean Shader
+        const waterGeo = new THREE.PlaneGeometry(760, 760, 88, 88);
+        waterGeo.rotateX(-Math.PI / 2);
+        waterMat = new THREE.ShaderMaterial({
+          transparent: true,
+          uniforms: {
+            uTime: { value: 0 },
+            uDeep: { value: REALMS[0].waterDeep.clone() },
+            uGlow: { value: REALMS[0].waterGlow.clone() }
+          },
+          vertexShader: `
+            uniform float uTime;
+            varying vec3 vWorldPos;
+            varying float vWave;
+            void main() {
+              vec3 p = position;
+              float w = sin(p.x * 0.14 + uTime * 1.4) * 0.24 + cos(p.z * 0.12 - uTime * 1.1) * 0.24;
+              p.y += w;
+              vWave = w;
+              vec4 wp = modelMatrix * vec4(p, 1.0);
+              vWorldPos = wp.xyz;
+              gl_Position = projectionMatrix * viewMatrix * wp;
+            }
+          `,
+          fragmentShader: `
+            uniform float uTime;
+            uniform vec3 uDeep;
+            uniform vec3 uGlow;
+            varying vec3 vWorldPos;
+            varying float vWave;
+            void main() {
+              float centerPath = exp(-abs(vWorldPos.x) * 0.024) * smoothstep(45.0, -240.0, vWorldPos.z);
+              float brush = sin(vWorldPos.x * 1.5 + vWave * 6.0 + uTime * 1.8) * 0.5 + 0.5;
+              float sparkle = smoothstep(0.6, 0.96, brush) * (0.26 + centerPath * 1.05);
+              vec3 col = mix(uDeep, uGlow, clamp(centerPath * 0.62 + sparkle * 0.65, 0.0, 1.0));
+              float distFade = smoothstep(380.0, 55.0, length(vWorldPos.xz));
+              gl_FragColor = vec4(col, 0.93 * distFade + 0.07);
+            }
+          `
+        });
+        const water = new THREE.Mesh(waterGeo, waterMat);
+        water.position.y = -0.35;
+        scene.add(water);
+      }
+
+      // =========================================================================
+      // 8. 12,000+ INSTANCED 3D IMPASTO BRUSH STROKES
+      // =========================================================================
+      function buildImpastoGrass() {
+        const COUNT = 12000;
+        const bladeGeo = new THREE.PlaneGeometry(0.26, 1.38, 1, 3);
+        bladeGeo.translate(0, 0.69, 0);
+
+        const offsets = new Float32Array(COUNT * 3);
+        const scales = new Float32Array(COUNT);
+        const angles = new Float32Array(COUNT);
+        const seeds = new Float32Array(COUNT);
+
+        let placed = 0;
+        let attempts = 0;
+        while (placed < COUNT && attempts < COUNT * 4) {
+          attempts++;
+          const r = Math.sqrt(Math.random()) * 48;
+          const th = Math.random() * Math.PI * 2;
+          const x = Math.cos(th) * r;
+          const z = Math.sin(th) * r;
+          const y = getTerrainHeight(x, z);
+          if (y < 0.15) continue;
+          if (Math.hypot(x - 14, z + 6) < 5.5) continue;
+          if (Math.hypot(x - SUMMIT_X, z - SUMMIT_Z) < 4.0) continue;
+
+          offsets[placed * 3] = x;
+          offsets[placed * 3 + 1] = y - 0.08;
+          offsets[placed * 3 + 2] = z;
+          scales[placed] = 0.65 + Math.random() * 0.98;
+          angles[placed] = Math.random() * Math.PI * 2;
+          seeds[placed] = Math.random();
+          placed++;
+        }
+
+        const instGeo = new THREE.InstancedBufferGeometry();
+        instGeo.index = bladeGeo.index;
+        instGeo.attributes.position = bladeGeo.attributes.position;
+        instGeo.attributes.uv = bladeGeo.attributes.uv;
+        instGeo.setAttribute('aOffset', new THREE.InstancedBufferAttribute(offsets, 3));
+        instGeo.setAttribute('aScale', new THREE.InstancedBufferAttribute(scales, 1));
+        instGeo.setAttribute('aAngle', new THREE.InstancedBufferAttribute(angles, 1));
+        instGeo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 1));
+        instGeo.instanceCount = placed;
+
+        grassMat = new THREE.ShaderMaterial({
+          side: THREE.DoubleSide,
+          uniforms: {
+            uTime: { value: 0 },
+            uWind: { value: 1.0 },
+            uBaseColor: { value: REALMS[0].grassBase.clone() },
+            uTipColor: { value: REALMS[0].grassTip.clone() },
+            uAltColor: { value: REALMS[0].grassAlt.clone() },
+            uPlayerPos: { value: new THREE.Vector3() }
+          },
+          vertexShader: `
+            attribute vec3 aOffset;
+            attribute float aScale;
+            attribute float aAngle;
+            attribute float aSeed;
+            uniform float uTime;
+            uniform float uWind;
+            uniform vec3 uPlayerPos;
+            varying vec2 vUv;
+            varying float vSeed;
+            varying float vWave;
+            varying float vDist;
+
+            void main() {
+              vUv = uv;
+              vSeed = aSeed;
+
+              vec3 pos = position;
+              pos.x *= (1.0 - uv.y * 0.55) * (0.85 + aSeed * 0.45);
+              pos.y *= aScale;
+
+              float c = cos(aAngle);
+              float s = sin(aAngle);
+              vec3 rot = vec3(pos.x * c - pos.z * s, pos.y, pos.x * s + pos.z * c);
+
+              float wave = sin(uTime * 1.9 + aOffset.x * 0.18 + aOffset.z * 0.14 + aSeed * 3.0) * 0.42 * uWind;
+              rot.x += wave * uv.y * uv.y;
+              rot.z += cos(uTime * 1.4 + aOffset.z * 0.2) * 0.22 * uWind * uv.y * uv.y;
+              vWave = wave;
+
+              vec3 worldBase = aOffset;
+              vec2 toBlade = worldBase.xz - uPlayerPos.xz;
+              float d = length(toBlade);
+              if (d < 2.4 && d > 0.01) {
+                float push = (1.0 - d / 2.4) * 1.18 * uv.y;
+                vec2 dir = toBlade / d;
+                rot.x += dir.x * push;
+                rot.z += dir.y * push;
+              }
+
+              vec4 mvPosition = modelViewMatrix * vec4(worldBase + rot, 1.0);
+              vDist = -mvPosition.z;
+              gl_Position = projectionMatrix * mvPosition;
+            }
+          `,
+          fragmentShader: `
+            uniform vec3 uBaseColor;
+            uniform vec3 uTipColor;
+            uniform vec3 uAltColor;
+            varying vec2 vUv;
+            varying float vSeed;
+            varying float vWave;
+            varying float vDist;
+
+            void main() {
+              vec3 tip = mix(uTipColor, uAltColor, smoothstep(0.55, 0.95, vSeed));
+              vec3 col = mix(uBaseColor, tip, pow(vUv.y, 0.78));
+              float highlight = smoothstep(0.35, 0.85, vUv.y) * (0.14 + 0.20 * max(0.0, vWave));
+              col += tip * highlight;
+              // Atmospheric aerial haze on distant grass for depth
+              float haze = smoothstep(32.0, 95.0, vDist) * 0.35;
+              col = mix(col, tip * 0.75, haze);
+              gl_FragColor = vec4(col, 1.0);
+            }
+          `
+        });
+
+        const grassMesh = new THREE.Mesh(instGeo, grassMat);
+        grassMesh.frustumCulled = false;
+        scene.add(grassMesh);
+      }
+
+      // =========================================================================
+      // 9. 2,400 SWIRLING IMPASTO SKY BRUSH STROKES & FLOATING DEPTH DUST
+      // =========================================================================
+      function buildSkyBrushStrokes() {
+        const COUNT = 2400;
+        const geo = new THREE.PlaneGeometry(3.8, 0.82);
+        const instGeo = new THREE.InstancedBufferGeometry();
+        instGeo.index = geo.index;
+        instGeo.attributes.position = geo.attributes.position;
+        instGeo.attributes.uv = geo.attributes.uv;
+
+        const posArr = new Float32Array(COUNT * 3);
+        const seedArr = new Float32Array(COUNT);
+
+        for (let i = 0; i < COUNT; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const radius = 85 + Math.random() * 195;
+          const height = 22 + Math.random() * 120;
+          posArr[i * 3] = Math.cos(angle) * radius;
+          posArr[i * 3 + 1] = height;
+          posArr[i * 3 + 2] = Math.sin(angle) * radius - 50;
+          seedArr[i] = Math.random();
+        }
+
+        instGeo.setAttribute('aPos', new THREE.InstancedBufferAttribute(posArr, 3));
+        instGeo.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seedArr, 1));
+        instGeo.instanceCount = COUNT;
+
+        skyStrokeMat = new THREE.ShaderMaterial({
+          transparent: true,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          uniforms: {
+            uTime: { value: 0 },
+            uColorA: { value: REALMS[0].skyStrokeA.clone() },
+            uColorB: { value: REALMS[0].skyStrokeB.clone() }
+          },
+          vertexShader: `
+            attribute vec3 aPos;
+            attribute float aSeed;
+            uniform float uTime;
+            varying float vSeed;
+            varying vec2 vUv;
+
+            void main() {
+              vSeed = aSeed;
+              vUv = uv;
+              float a = uTime * (0.025 + aSeed * 0.03);
+              float ca = cos(a), sa = sin(a);
+              vec3 center = vec3(aPos.x * ca - aPos.z * sa, aPos.y + sin(uTime * 0.6 + aSeed * 12.0) * 1.4, aPos.x * sa + aPos.z * ca);
+
+              vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+              vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+              float tilt = (aSeed - 0.5) * 1.2 + sin(uTime * 0.5 + aSeed * 6.0) * 0.25;
+              float ct = cos(tilt), st = sin(tilt);
+              vec2 p = vec2(position.x * ct - position.y * st, position.x * st + position.y * ct);
+              vec3 worldPos = center + right * p.x * (0.75 + aSeed * 0.95) + up * p.y;
+              gl_Position = projectionMatrix * viewMatrix * vec4(worldPos, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform vec3 uColorA;
+            uniform vec3 uColorB;
+            varying float vSeed;
+            varying vec2 vUv;
+            void main() {
+              float edge = smoothstep(0.0, 0.25, vUv.x) * smoothstep(1.0, 0.75, vUv.x) *
+                           smoothstep(0.0, 0.35, vUv.y) * smoothstep(1.0, 0.65, vUv.y);
+              vec3 col = mix(uColorB, uColorA, vSeed);
+              gl_FragColor = vec4(col, edge * 0.4);
+            }
+          `
+        });
+
+        const skyStrokes = new THREE.Mesh(instGeo, skyStrokeMat);
+        skyStrokes.frustumCulled = false;
+        scene.add(skyStrokes);
+      }
+
+      // Floating luminous dust motes around the island for tangible 3D foreground/midground parallax
+      function buildAtmosphericDust() {
+        const COUNT = 420;
+        const pos = new Float32Array(COUNT * 3);
+        for (let i = 0; i < COUNT; i++) {
+          const r = Math.random() * 52;
+          const a = Math.random() * Math.PI * 2;
+          pos[i * 3] = Math.cos(a) * r;
+          pos[i * 3 + 1] = 1.2 + Math.random() * 14;
+          pos[i * 3 + 2] = Math.sin(a) * r;
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        const mat = new THREE.PointsMaterial({
+          color: REALMS[0].dustColor,
+          size: 0.24,
+          transparent: true,
+          opacity: 0.72,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+        dustParticles = new THREE.Points(geo, mat);
+        scene.add(dustParticles);
+      }
+
+      // =========================================================================
+      // 10. ICONIC LANDMARKS
+      // =========================================================================
+      const landmarkGeosForWireframe = [];
+
+      function buildLandmarks() {
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0x3b2618, roughness: 0.9, flatShading: true });
+        const roofMat = new THREE.MeshStandardMaterial({ color: 0x7c2d23, roughness: 0.85, flatShading: true });
+        const stoneMat = new THREE.MeshStandardMaterial({ color: 0x8f8578, roughness: 0.92, flatShading: true });
+        const windowGlowMat = new THREE.MeshBasicMaterial({ color: 0xffd27a });
+        const truckMat = new THREE.MeshStandardMaterial({ color: 0x1d232b, roughness: 0.6, metalness: 0.35 });
+
+        // Aurum Farmhouse
+        const house = new THREE.Group();
+        const hx = 14, hz = -6;
+        house.position.set(hx, getTerrainHeight(hx, hz) - 0.3, hz);
+        house.rotation.y = -0.35;
+
+        const houseBody = new THREE.Mesh(new THREE.BoxGeometry(6.2, 3.8, 4.6), woodMat);
+        houseBody.position.y = 1.9;
+        house.add(houseBody);
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(4.9, 2.7, 4), roofMat);
+        roof.position.y = 5.1;
+        roof.rotation.y = Math.PI / 4;
+        house.add(roof);
+
+        for (let wx of [-1.8, 0, 1.8]) {
+          const win = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.05), windowGlowMat);
+          win.position.set(wx, 2.0, 2.32);
+          house.add(win);
+          const winBack = win.clone();
+          winBack.position.z = -2.32;
+          winBack.rotation.y = Math.PI;
+          house.add(winBack);
+        }
+        const houseLight = new THREE.PointLight(0xffb454, 2.4, 22);
+        houseLight.position.set(0, 2.4, 3.2);
+        house.add(houseLight);
+        scene.add(house);
+        landmarkGeosForWireframe.push(house);
+
+        // Aurum Pickup Truck
+        const truck = new THREE.Group();
+        const tx = 6.2, tz = -4.2;
+        truck.position.set(tx, getTerrainHeight(tx, tz) + 0.1, tz);
+        truck.rotation.y = 0.25;
+
+        const chassis = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.9, 1.8), truckMat);
+        chassis.position.y = 0.75;
+        truck.add(chassis);
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.95, 1.65), truckMat);
+        cabin.position.set(0.3, 1.55, 0);
+        truck.add(cabin);
+        const headlight = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.25, 1.3), windowGlowMat);
+        headlight.position.set(-2.12, 0.82, 0);
+        truck.add(headlight);
+
+        const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.35, 12);
+        wheelGeo.rotateX(Math.PI / 2);
+        for (let wx of [-1.25, 1.25]) {
+          for (let wz of [-0.9, 0.9]) {
+            const wheel = new THREE.Mesh(wheelGeo, truckMat);
+            wheel.position.set(wx, 0.45, wz);
+            truck.add(wheel);
+          }
+        }
+        scene.add(truck);
+        landmarkGeosForWireframe.push(truck);
+
+        // Impasto Cape Windmill
+        const windmill = new THREE.Group();
+        const wx = 20, wz = -22;
+        windmill.position.set(wx, getTerrainHeight(wx, wz) - 0.5, wz);
+        windmill.rotation.y = -0.6;
+
+        const tower = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 3.2, 11.5, 10), stoneMat);
+        tower.position.y = 5.75;
+        windmill.add(tower);
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(2.55, 3.0, 10), roofMat);
+        cap.position.y = 12.9;
+        windmill.add(cap);
+
+        windmillBlades = new THREE.Group();
+        windmillBlades.position.set(0, 10.6, 2.35);
+        const sailMat = new THREE.MeshStandardMaterial({ color: 0xebd4a7, side: THREE.DoubleSide, roughness: 0.8 });
+        for (let i = 0; i < 4; i++) {
+          const arm = new THREE.Group();
+          arm.rotation.z = (i * Math.PI) / 2;
+          const spar = new THREE.Mesh(new THREE.BoxGeometry(0.24, 6.4, 0.16), woodMat);
+          spar.position.y = 3.2;
+          arm.add(spar);
+          const sail = new THREE.Mesh(new THREE.PlaneGeometry(1.35, 5.2), sailMat);
+          sail.position.set(0.75, 3.6, 0.05);
+          arm.add(sail);
+          windmillBlades.add(arm);
+        }
+        windmill.add(windmillBlades);
+        scene.add(windmill);
+        landmarkGeosForWireframe.push(windmill);
+
+        // Impasto Coastal Lighthouse
+        const lh = new THREE.Group();
+        const lx = -24, lz = -20;
+        lh.position.set(lx, getTerrainHeight(lx, lz) - 0.4, lz);
+
+        const lhBase = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.4, 13.5, 12), stoneMat);
+        lhBase.position.y = 6.75;
+        lh.add(lhBase);
+        const lhLantern = new THREE.Mesh(new THREE.CylinderGeometry(1.35, 1.35, 2.0, 10), windowGlowMat);
+        lhLantern.position.y = 14.3;
+        lh.add(lhLantern);
+        const lhCap = new THREE.Mesh(new THREE.ConeGeometry(1.75, 2.0, 10), roofMat);
+        lhCap.position.y = 16.2;
+        lh.add(lhCap);
+
+        const beamMesh = new THREE.Mesh(
+          new THREE.ConeGeometry(5.5, 32, 16, 1, true),
+          new THREE.MeshBasicMaterial({
+            color: 0xffe49c,
+            transparent: true,
+            opacity: 0.16,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+          })
+        );
+        beamMesh.rotation.z = Math.PI / 2;
+        beamMesh.position.set(16, 14.3, 0);
+        lighthouseBeam = new THREE.Group();
+        lighthouseBeam.add(beamMesh);
+        lh.add(lighthouseBeam);
+
+        scene.add(lh);
+        landmarkGeosForWireframe.push(lh);
+
+        // --- E. HORIZON SUMMIT CRAG, LOOKOUT LEDGE & RED FLAG ---
+        summitRockGroup = new THREE.Group();
+        const sy = getTerrainHeight(SUMMIT_X, SUMMIT_Z);
+        summitRockGroup.position.set(SUMMIT_X, sy, SUMMIT_Z);
+
+        const cragMat = new THREE.MeshStandardMaterial({
+          color: 0x252736,
+          roughness: 0.92,
+          metalness: 0.08,
+          flatShading: true
+        });
+        // Sculpted rocky summit crown & flat sitting stone ledge facing -Z (Black Hole)
+        const mainRock = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 4.2, 2.2, 7), cragMat);
+        mainRock.position.set(0, -0.7, 0);
+        summitRockGroup.add(mainRock);
+
+        const sitLedge = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.65, 1.5), cragMat);
+        sitLedge.position.set(0, 0.15, -1.65);
+        summitRockGroup.add(sitLedge);
+
+        const sideBoulder = new THREE.Mesh(new THREE.DodecahedronGeometry(1.15, 0), cragMat);
+        sideBoulder.position.set(-1.9, 0.25, 0.6);
+        sideBoulder.scale.set(1.2, 0.85, 1.0);
+        summitRockGroup.add(sideBoulder);
+
+        // Tall Summit Flagpole with animated red pennant flag
+        const poleMat = new THREE.MeshStandardMaterial({ color: 0xd9dee8, metalness: 0.75, roughness: 0.3 });
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, 4.6, 8), poleMat);
+        pole.position.set(1.25, 2.4, -0.8);
+        summitRockGroup.add(pole);
+
+        const finial = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 10), new THREE.MeshStandardMaterial({ color: 0xf6c46b, metalness: 0.85, roughness: 0.2 }));
+        finial.position.set(1.25, 4.72, -0.8);
+        summitRockGroup.add(finial);
+
+        const flagGeo = new THREE.PlaneGeometry(1.9, 0.82, 10, 3);
+        flagGeo.translate(0.95, 0, 0);
+        // Taper right edge into a triangular summit pennant like the reference image
+        const fp = flagGeo.attributes.position;
+        for (let i = 0; i < fp.count; i++) {
+          const fx = fp.getX(i); // 0 to 1.9
+          const fy = fp.getY(i);
+          const taper = 1.0 - (fx / 1.9) * 0.88;
+          fp.setY(i, fy * taper);
+        }
+        flagGeo.computeVertexNormals();
+        summitFlagBasePos = new Float32Array(fp.array);
+
+        const flagMat = new THREE.MeshStandardMaterial({
+          color: 0xe62e2e,
+          emissive: 0x7a1010,
+          emissiveIntensity: 0.35,
+          side: THREE.DoubleSide,
+          roughness: 0.6
+        });
+        summitFlagMesh = new THREE.Mesh(flagGeo, flagMat);
+        summitFlagMesh.position.set(1.28, 4.22, -0.8);
+        summitRockGroup.add(summitFlagMesh);
+
+        // Warm lantern glow at summit camp
+        const summitLight = new THREE.PointLight(0xffb85c, 1.8, 16);
+        summitLight.position.set(0.8, 2.2, -1.2);
+        summitRockGroup.add(summitLight);
+
+        scene.add(summitRockGroup);
+        landmarkGeosForWireframe.push(summitRockGroup);
+      }
+
+      // =========================================================================
+      // 11. UPGRADED ARTISTIC ASTRONAUT EXPLORER (Journey × Viola × Impasto Cape)
+      // =========================================================================
+      function buildDetailedPlayer() {
+        playerGroup = new THREE.Group();
+        bodyPivot = new THREE.Group();
+        playerGroup.add(bodyPivot);
+
+        const suitMain = new THREE.MeshStandardMaterial({ color: 0xe6e8f0, roughness: 0.42, metalness: 0.25 });
+        const suitDark = new THREE.MeshStandardMaterial({ color: 0x222733, roughness: 0.55, metalness: 0.4 });
+        const goldTrim = new THREE.MeshStandardMaterial({ color: 0xf0be60, roughness: 0.25, metalness: 0.85 });
+        const visorMat = new THREE.MeshStandardMaterial({
+          color: 0xffc766,
+          emissive: 0xd97d1c,
+          emissiveIntensity: 0.55,
+          roughness: 0.08,
+          metalness: 0.95
+        });
+        capeMatRef = new THREE.MeshStandardMaterial({
+          color: REALMS[0].capeColor,
+          emissive: REALMS[0].capeEmissive,
+          emissiveIntensity: 0.5,
+          side: THREE.DoubleSide,
+          roughness: 0.65
+        });
+
+        // Torso & Layered Chest Armor (facing -Z)
+        const chest = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.24, 0.72, 14), suitMain);
+        chest.position.y = 1.18;
+        bodyPivot.add(chest);
+
+        const chestPlate = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 0.36), suitDark);
+        chestPlate.position.set(0, 1.24, -0.02);
+        bodyPivot.add(chestPlate);
+
+        const chestCore = new THREE.Mesh(
+          new THREE.CircleGeometry(0.075, 16),
+          new THREE.MeshBasicMaterial({ color: 0xffe49e })
+        );
+        chestCore.position.set(0, 1.26, -0.21);
+        chestCore.rotation.y = Math.PI;
+        bodyPivot.add(chestCore);
+
+        // Waist Belt
+        const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.27, 0.14, 14), goldTrim);
+        belt.position.y = 0.84;
+        bodyPivot.add(belt);
+
+        // Gold Collar Ring
+        const collar = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.045, 10, 20), goldTrim);
+        collar.rotation.x = Math.PI / 2;
+        collar.position.y = 1.56;
+        bodyPivot.add(collar);
+
+        // Head & Reflective Astronaut Helmet
+        headGroup = new THREE.Group();
+        headGroup.position.set(0, 1.82, 0);
+        const helmetShell = new THREE.Mesh(new THREE.SphereGeometry(0.32, 18, 18), suitMain);
+        headGroup.add(helmetShell);
+        const visor = new THREE.Mesh(new THREE.SphereGeometry(0.275, 16, 16), visorMat);
+        visor.position.set(0, 0.01, -0.11);
+        visor.scale.set(0.96, 0.88, 0.9);
+        headGroup.add(visor);
+        const helmetCrest = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.38), goldTrim);
+        helmetCrest.position.set(0, 0.3, 0.02);
+        headGroup.add(helmetCrest);
+        bodyPivot.add(headGroup);
+
+        // Detailed Oxygen Backpack + Dual Thruster Tanks + Red Beacon (Viola homage)
+        const packGroup = new THREE.Group();
+        packGroup.position.set(0, 1.22, 0.24);
+        const packCore = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.56, 0.22), suitDark);
+        packGroup.add(packCore);
+        const tankGeo = new THREE.CylinderGeometry(0.085, 0.085, 0.5, 10);
+        for (let sx of [-0.14, 0.14]) {
+          const tank = new THREE.Mesh(tankGeo, suitMain);
+          tank.position.set(sx, 0, 0.08);
+          packGroup.add(tank);
+          const cap = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), goldTrim);
+          cap.position.set(sx, 0.25, 0.08);
+          packGroup.add(cap);
+        }
+        const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 10), new THREE.MeshBasicMaterial({ color: 0xff3b30 }));
+        beacon.position.set(0, 0.14, 0.14);
+        packGroup.add(beacon);
+        bodyPivot.add(packGroup);
+
+        // Articulated Arms (Shoulder pads + Upper/Lower Arm + Gloves)
+        const makeArm = (side) => {
+          const armPivot = new THREE.Group();
+          armPivot.position.set(side * 0.36, 1.44, 0);
+          const shoulder = new THREE.Mesh(new THREE.SphereGeometry(0.125, 12, 12), goldTrim);
+          armPivot.add(shoulder);
+          const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.072, 0.52, 10), suitMain);
+          sleeve.position.y = -0.28;
+          armPivot.add(sleeve);
+          const glove = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 10), suitDark);
+          glove.position.y = -0.56;
+          armPivot.add(glove);
+          return armPivot;
+        };
+        leftArm = makeArm(-1);
+        rightArm = makeArm(1);
+        bodyPivot.add(leftArm, rightArm);
+
+        // Articulated Legs & Boots
+        const makeLeg = (side) => {
+          const legPivot = new THREE.Group();
+          legPivot.position.set(side * 0.15, 0.82, 0);
+          const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.085, 0.42, 10), suitMain);
+          thigh.position.y = -0.21;
+          legPivot.add(thigh);
+          const knee = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 10), suitDark);
+          knee.position.y = -0.42;
+          legPivot.add(knee);
+          const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.08, 0.34, 10), suitDark);
+          shin.position.y = -0.6;
+          legPivot.add(shin);
+          const boot = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.12, 0.28), goldTrim);
+          boot.position.set(0, -0.76, -0.05);
+          legPivot.add(boot);
+          return legPivot;
+        };
+        leftLeg = makeLeg(-1);
+        rightLeg = makeLeg(1);
+        bodyPivot.add(leftLeg, rightLeg);
+
+        // Multi-segment Flowing Painterly Cape (Vertex-animated cloth wave!)
+        const capeGeo = new THREE.PlaneGeometry(0.98, 1.55, 6, 12);
+        capeGeo.translate(0, -0.775, 0);
+        // Taper top of cape to fit shoulders
+        const cp = capeGeo.attributes.position;
+        for (let i = 0; i < cp.count; i++) {
+          const y = cp.getY(i); // 0 at top, -1.55 at bottom
+          const t = Math.abs(y) / 1.55;
+          cp.setX(i, cp.getX(i) * (0.58 + t * 0.62));
+        }
+        capeGeo.computeVertexNormals();
+        capeBasePos = new Float32Array(cp.array);
+
+        capeMesh = new THREE.Mesh(capeGeo, capeMatRef);
+        capeMesh.position.set(0, 1.54, 0.28);
+        bodyPivot.add(capeMesh);
+
+        // Flowing Glowing Scarf Ribbon
+        const scarfGeo = new THREE.PlaneGeometry(0.18, 1.3, 2, 8);
+        scarfGeo.translate(0, -0.65, 0);
+        scarfMesh = new THREE.Mesh(
+          scarfGeo,
+          new THREE.MeshBasicMaterial({ color: 0xffd782, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+        );
+        scarfMesh.position.set(0.22, 1.52, 0.2);
+        bodyPivot.add(scarfMesh);
+
+        // Floating Lumen Companion Orb hovering near shoulder
+        companionOrb = new THREE.Group();
+        const orbCore = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.12, 1),
+          new THREE.MeshBasicMaterial({ color: 0xfff5cf })
+        );
+        const orbHalo = new THREE.Mesh(
+          new THREE.RingGeometry(0.16, 0.2, 20),
+          new THREE.MeshBasicMaterial({ color: 0xffc864, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+        );
+        companionOrb.add(orbCore, orbHalo);
+        companionOrb.position.set(0.75, 2.05, 0.1);
+        playerGroup.add(companionOrb);
+
+        // Warm aura light around player
+        playerLight = new THREE.PointLight(0xffb452, 2.0, 13);
+        playerLight.position.set(0, 1.8, 0.2);
+        playerGroup.add(playerLight);
+
+        // Glowing particle trail behind character
+        const trailLen = 28;
+        trailPositions = new Float32Array(trailLen * 3);
+        for (let i = 0; i < trailLen; i++) {
+          trailPositions[i * 3] = player.pos.x;
+          trailPositions[i * 3 + 1] = player.pos.y + 1.0;
+          trailPositions[i * 3 + 2] = player.pos.z;
+        }
+        const trailGeo = new THREE.BufferGeometry();
+        trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+        trailMesh = new THREE.Points(
+          trailGeo,
+          new THREE.PointsMaterial({
+            color: 0xffd680,
+            size: 0.22,
+            transparent: true,
+            opacity: 0.65,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+          })
+        );
+        scene.add(trailMesh);
+
+        player.pos.y = getTerrainHeight(player.pos.x, player.pos.z);
+        playerGroup.position.copy(player.pos);
+        scene.add(playerGroup);
+      }
+
+      // =========================================================================
+      // 12. 12 COLLECTIBLE LUMEN SHARDS
+      // =========================================================================
+      const SHARD_COORDS = [
+        [0, 4], [7, -1], [15, -1], [18, -12],
+        [22, -18], [10, -24], [-4, -22], [-18, -16],
+        [-24, -12], [-16, 4], [-8, 16], [12, 15]
+      ];
+
+      function buildLumenShards() {
+        const shardGeo = new THREE.OctahedronGeometry(0.55, 0);
+        const beamGeo = new THREE.CylinderGeometry(0.06, 0.28, 16, 8, 1, true);
+
+        shards = SHARD_COORDS.map(([x, z], idx) => {
+          const y = Math.max(0.8, getTerrainHeight(x, z) + 1.45);
+          const group = new THREE.Group();
+          group.position.set(x, y, z);
+
+          const mat = new THREE.MeshStandardMaterial({
+            color: 0xfff3c4,
+            emissive: 0xffb84d,
+            emissiveIntensity: 1.2,
+            roughness: 0.15,
+            metalness: 0.4
+          });
+          const crystal = new THREE.Mesh(shardGeo, mat);
+          group.add(crystal);
+
+          const beamMat = new THREE.MeshBasicMaterial({
+            color: 0xffd27a,
+            transparent: true,
+            opacity: 0.22,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide
+          });
+          const beam = new THREE.Mesh(beamGeo, beamMat);
+          beam.position.y = 7.5;
+          group.add(beam);
+
+          scene.add(group);
+          return { group, crystal, baseY: y, collected: false, idx };
+        });
+
+        const pCount = 260;
+        const pPos = new Float32Array(pCount * 3);
+        for (let i = 0; i < pCount; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const r = 4 + Math.random() * 44;
+          pPos[i * 3] = Math.cos(a) * r;
+          pPos[i * 3 + 1] = 2 + Math.random() * 28;
+          pPos[i * 3 + 2] = Math.sin(a) * r;
+        }
+        const pGeo = new THREE.BufferGeometry();
+        pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+        bloomBurstParticles = new THREE.Points(
+          pGeo,
+          new THREE.PointsMaterial({
+            color: 0xffe6a3,
+            size: 0.9,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending
+          })
+        );
+        scene.add(bloomBurstParticles);
+      }
+
+      // =========================================================================
+      // 13. WIREFRAME MIRROR SCENE FOR SPLIT-SCREEN X-RAY MODE
+      // =========================================================================
+      let wirePlayerMarker;
+      function buildWireframeMirror() {
+        const wireCyan = new THREE.MeshBasicMaterial({
+          color: 0x26e8ff,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.62
+        });
+        const wireGold = new THREE.MeshBasicMaterial({
+          color: 0xffc857,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.78
+        });
+
+        wireScene.add(new THREE.Mesh(terrainGeo, wireCyan));
+
+        const wOceanGeo = new THREE.PlaneGeometry(460, 460, 52, 52);
+        wOceanGeo.rotateX(-Math.PI / 2);
+        const wOcean = new THREE.Mesh(wOceanGeo, new THREE.MeshBasicMaterial({
+          color: 0x0d7899,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.35
+        }));
+        wOcean.position.y = -0.35;
+        wireScene.add(wOcean);
+
+        const wHole = new THREE.Mesh(new THREE.SphereGeometry(56, 24, 18), wireGold);
+        wHole.position.set(0, 48, -280);
+        wireScene.add(wHole);
+        const wRing = new THREE.Mesh(new THREE.TorusGeometry(92, 5.5, 8, 52), wireCyan);
+        wRing.position.set(0, 48, -280);
+        wRing.rotation.x = Math.PI * 0.44;
+        wireScene.add(wRing);
+
+        landmarkGeosForWireframe.forEach(group => {
+          const clone = group.clone();
+          clone.traverse(child => {
+            if (child.isMesh) child.material = wireGold;
+          });
+          wireScene.add(clone);
+        });
+
+        wirePlayerMarker = new THREE.Mesh(new THREE.OctahedronGeometry(0.95, 1), wireGold);
+        wireScene.add(wirePlayerMarker);
+      }
+
+      // =========================================================================
+      // 14. REALM SWITCHING
+      // =========================================================================
+      function applyRealmImmediate(idx) {
+        currentRealmIdx = idx;
+        audio.currentRealm = idx;
+        const r = REALMS[idx];
+
+        scene.fog.color.setHex(r.fogColor);
+        scene.fog.density = r.fogDensity;
+
+        const skyDome = scene.getObjectByName('skyDome');
+        if (skyDome) {
+          skyDome.material.uniforms.uTop.value.setHex(r.bgTop);
+          skyDome.material.uniforms.uMid.value.setHex(r.bgMid);
+          skyDome.material.uniforms.uHorizon.value.setHex(r.bgHorizon);
+        }
+
+        blackHoleMat.uniforms.uInnerColor.value.copy(r.diskInner);
+        blackHoleMat.uniforms.uOuterColor.value.copy(r.diskOuter);
+        grassMat.uniforms.uBaseColor.value.copy(r.grassBase);
+        grassMat.uniforms.uTipColor.value.copy(r.grassTip);
+        grassMat.uniforms.uAltColor.value.copy(r.grassAlt);
+        grassMat.uniforms.uWind.value = r.windStrength;
+        terrainMat.color.setHex(r.groundColor);
+        waterMat.uniforms.uDeep.value.copy(r.waterDeep);
+        waterMat.uniforms.uGlow.value.copy(r.waterGlow);
+        skyStrokeMat.uniforms.uColorA.value.copy(r.skyStrokeA);
+        skyStrokeMat.uniforms.uColorB.value.copy(r.skyStrokeB);
+        if (mistMat) mistMat.uniforms.uColor.value.copy(r.mistColor);
+        if (dustParticles) dustParticles.material.color.setHex(r.dustColor);
+        if (capeMatRef) {
+          capeMatRef.color.setHex(r.capeColor);
+          capeMatRef.emissive.setHex(r.capeEmissive);
+        }
+
+        dirLight.color.setHex(r.sunColor);
+        hemiLight.color.setHex(r.hemiSky);
+        hemiLight.groundColor.setHex(r.hemiGround);
+
+        document.getElementById('realm-title').textContent = r.name;
+        document.getElementById('realm-subtitle').textContent = r.subtitle;
+        document.querySelectorAll('.realm-btn').forEach((btn, i) => {
+          btn.classList.toggle('active', i === idx);
+        });
+      }
+
+      function switchRealm(idx) {
+        if (idx === currentRealmIdx) return;
+        const overlay = document.getElementById('fade-overlay');
+        overlay.style.opacity = '1';
+        setTimeout(() => {
+          applyRealmImmediate(idx);
+          overlay.style.opacity = '0';
+        }, 320);
+      }
+
+      // =========================================================================
+      // 15. UI, INPUT & SPLIT-SCREEN HANDLERS
+      // =========================================================================
+      let toastTimer = null;
+      function showToast(title, body) {
+        const el = document.getElementById('toast');
+        document.getElementById('toast-title').textContent = title;
+        document.getElementById('toast-body').textContent = body;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 4200);
+      }
+
+      function updateSplitUI() {
+        const line = document.getElementById('split-line');
+        const handle = document.getElementById('split-handle');
+        const bWire = document.getElementById('badge-wire');
+        const bPaint = document.getElementById('badge-paint');
+        const btn = document.getElementById('btn-split');
+
+        const pct = (splitRatio * 100).toFixed(2) + '%';
+        line.style.left = pct;
+        handle.style.left = pct;
+        line.style.display = splitMode ? 'block' : 'none';
+        handle.style.display = splitMode ? 'flex' : 'none';
+        bWire.style.display = splitMode ? 'block' : 'none';
+        bPaint.style.display = splitMode ? 'block' : 'none';
+        btn.classList.toggle('cyan-active', splitMode);
+      }
+
+      function setLensMm(mm) {
+        const clamped = Math.max(24, Math.min(85, mm));
+        document.getElementById('lens-slider').value = clamped;
+        document.getElementById('lens-value').textContent = clamped + 'mm';
+        targetFov = 2 * Math.atan(24 / (2 * clamped)) * (180 / Math.PI) * 1.42;
+        // Adjust camera distance subtly with lens focal length for cinematic framing
+        camDist = 6.2 + ((clamped - 24) / 61) * 7.2;
+      }
+
+      function getSummitSeatPos() {
+        const sy = getTerrainHeight(SUMMIT_X, SUMMIT_Z);
+        return new THREE.Vector3(SUMMIT_X, sy + 0.48, SUMMIT_Z - 2.15);
+      }
+
+      function toggleSitOnSummit(allowTeleport) {
+        const seat = getSummitSeatPos();
+        if (player.isSitting) {
+          player.isSitting = false;
+          // Step slightly back onto the summit ledge when standing up
+          player.pos.z += 0.7;
+          player.vel.set(0, 0, 0);
+          document.getElementById('btn-summit').classList.remove('active');
+          document.getElementById('btn-summit').textContent = '▲ Đỉnh Núi (E)';
+          return;
+        }
+        const distToSummit = Math.hypot(player.pos.x - SUMMIT_X, player.pos.z - SUMMIT_Z);
+        if (distToSummit > 6.5) {
+          if (!allowTeleport) {
+            showToast('ĐỈNH NÚI HORIZON', 'Hãy leo lên đỉnh núi có lá cờ đỏ hoặc nhấn nút "▲ Đỉnh Núi" ở góc trên để lên ngắm cảnh ngay.');
+            return;
+          }
+          // Smooth teleport right onto the summit lookout ledge
+          player.pos.copy(seat);
+        } else {
+          player.pos.copy(seat);
+        }
+        player.vel.set(0, 0, 0);
+        player.yaw = 0; // Face directly toward the Black Hole & mountain horizon (-Z)
+        player.onGround = true;
+        player.isSitting = true;
+        camYaw = 0.28;  // Cinematic side-angle framing like the mountain summit illustration
+        camPitch = 0.14;
+        document.getElementById('btn-summit').classList.add('active');
+        document.getElementById('btn-summit').textContent = '✦ Đang Ngồi (E)';
+        showToast('ĐỈNH NÚI HORIZON', 'Ngồi thư giãn trên mỏm đá ngắm hố đen Gargantua và dãy núi trùng điệp. Kéo chuột xoay 360° hoặc nhấn W A S D để đứng dậy.');
+      }
+
+      function resetShards() {
+        collectedCount = 0;
+        singularityUnlocked = false;
+        blackHoleMat.uniforms.uBloomBoost.value = 1.0;
+        bloomBurstParticles.material.opacity = 0;
+        shards.forEach(s => {
+          s.collected = false;
+          s.group.visible = true;
+        });
+        document.getElementById('shard-counter').textContent = '✦ 0 / 12';
+      }
+
+      function setupEvents() {
+        window.addEventListener('resize', () => {
+          const w = container.clientWidth;
+          const h = container.clientHeight;
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+          renderer.setSize(w, h);
+        });
+
+        // Prevent stuck keys when window loses focus
+        window.addEventListener('blur', clearAllKeys);
+
+        document.getElementById('btn-start').addEventListener('click', () => {
+          document.getElementById('modal-backdrop').classList.add('hidden');
+          if (singularityUnlocked) resetShards();
+          if (!gameStarted) {
+            gameStarted = true;
+            const on = audio.toggle(true);
+            document.getElementById('btn-sound').textContent = on ? '♪ Sound: ON' : '♪ Sound: OFF';
+            document.getElementById('btn-sound').classList.toggle('active', on);
+          }
+        });
+
+        document.getElementById('btn-help').addEventListener('click', () => {
+          clearAllKeys();
+          document.getElementById('modal-title').textContent = 'HƯỚNG DẪN ĐIỀU KHIỂN';
+          document.getElementById('btn-start').textContent = 'TIẾP TỤC KHÁM PHÁ';
+          document.getElementById('modal-backdrop').classList.remove('hidden');
+        });
+
+        document.getElementById('btn-sound').addEventListener('click', () => {
+          const on = audio.toggle();
+          const btn = document.getElementById('btn-sound');
+          btn.textContent = on ? '♪ Sound: ON' : '♪ Sound: OFF';
+          btn.classList.toggle('active', on);
+        });
+
+        document.getElementById('btn-summit').addEventListener('click', () => {
+          toggleSitOnSummit(true);
+        });
+
+        document.getElementById('btn-split').addEventListener('click', () => {
+          splitMode = !splitMode;
+          updateSplitUI();
+        });
+
+        document.getElementById('btn-cinematic').addEventListener('click', () => {
+          cinematicMode = !cinematicMode;
+          document.getElementById('btn-cinematic').classList.toggle('active', cinematicMode);
+        });
+
+        document.querySelectorAll('.realm-btn').forEach(btn => {
+          btn.addEventListener('click', () => switchRealm(Number(btn.dataset.realm)));
+        });
+
+        document.getElementById('lens-slider').addEventListener('input', e => {
+          setLensMm(Number(e.target.value));
+        });
+
+        let draggingSplit = false;
+        const splitHandle = document.getElementById('split-handle');
+        splitHandle.addEventListener('pointerdown', e => {
+          draggingSplit = true;
+          e.stopPropagation();
+        });
+        window.addEventListener('pointermove', e => {
+          if (!draggingSplit) return;
+          splitRatio = Math.max(0.08, Math.min(0.92, e.clientX / window.innerWidth));
+          updateSplitUI();
+        });
+        window.addEventListener('pointerup', () => { draggingSplit = false; });
+
+        // Camera Mouse / Touch Drag
+        let draggingCam = false;
+        let lastX = 0, lastY = 0;
+        container.addEventListener('pointerdown', e => {
+          if (draggingSplit) return;
+          draggingCam = true;
+          lastX = e.clientX;
+          lastY = e.clientY;
+        });
+        window.addEventListener('pointermove', e => {
+          if (!draggingCam || draggingSplit) return;
+          const dx = e.clientX - lastX;
+          const dy = e.clientY - lastY;
+          lastX = e.clientX;
+          lastY = e.clientY;
+          camYaw -= dx * 0.0055;
+          camPitch = Math.max(0.05, Math.min(1.05, camPitch + dy * 0.0042));
+        });
+        window.addEventListener('pointerup', () => { draggingCam = false; });
+
+        container.addEventListener('wheel', e => {
+          const cur = Number(document.getElementById('lens-slider').value);
+          setLensMm(cur + (e.deltaY > 0 ? -3 : 3));
+        }, { passive: true });
+
+        // Keyboard (use e.code for layout-independent WASD + Arrows so Vietnamese IME never breaks movement!)
+        window.addEventListener('keydown', e => {
+          const modalOpen = !document.getElementById('modal-backdrop').classList.contains('hidden');
+          if (modalOpen) return;
+
+          const code = e.code;
+          if (code === 'KeyW' || code === 'ArrowUp') { keys.w = true; e.preventDefault(); }
+          if (code === 'KeyS' || code === 'ArrowDown') { keys.s = true; e.preventDefault(); }
+          if (code === 'KeyA' || code === 'ArrowLeft') { keys.a = true; e.preventDefault(); }
+          if (code === 'KeyD' || code === 'ArrowRight') { keys.d = true; e.preventDefault(); }
+          if (code === 'ShiftLeft' || code === 'ShiftRight') keys.shift = true;
+          if (code === 'Space') {
+            e.preventDefault();
+            keys.space = true;
+            if (player.onGround || singularityUnlocked) {
+              player.vel.y = singularityUnlocked ? 8.6 : 10.0;
+              player.onGround = false;
+              audio.playJump();
+            }
+          }
+          if (code === 'Digit1') switchRealm(0);
+          if (code === 'Digit2') switchRealm(1);
+          if (code === 'Digit3') switchRealm(2);
+          if (code === 'Digit4') switchRealm(3);
+          if (code === 'KeyE') {
+            toggleSitOnSummit(true);
+          }
+          if (code === 'KeyX') {
+            splitMode = !splitMode;
+            updateSplitUI();
+          }
+          if (code === 'KeyC') {
+            cinematicMode = !cinematicMode;
+            document.getElementById('btn-cinematic').classList.toggle('active', cinematicMode);
+          }
+          if (code === 'KeyM') {
+            const on = audio.toggle();
+            const btn = document.getElementById('btn-sound');
+            btn.textContent = on ? '♪ Sound: ON' : '♪ Sound: OFF';
+            btn.classList.toggle('active', on);
+          }
+        });
+
+        window.addEventListener('keyup', e => {
+          const code = e.code;
+          if (code === 'KeyW' || code === 'ArrowUp') keys.w = false;
+          if (code === 'KeyS' || code === 'ArrowDown') keys.s = false;
+          if (code === 'KeyA' || code === 'ArrowLeft') keys.a = false;
+          if (code === 'KeyD' || code === 'ArrowRight') keys.d = false;
+          if (code === 'ShiftLeft' || code === 'ShiftRight') keys.shift = false;
+          if (code === 'Space') keys.space = false;
+        });
+
+        // Mobile Touch Controls
+        const bindTouch = (id, keyName, isJump) => {
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            if (isJump) {
+              if (player.onGround || singularityUnlocked) {
+                player.vel.y = 9.8;
+                player.onGround = false;
+                audio.playJump();
+              }
+            } else {
+              keys[keyName] = true;
+            }
+          });
+          const end = () => { if (!isJump) keys[keyName] = false; };
+          el.addEventListener('pointerup', end);
+          el.addEventListener('pointerleave', end);
+          el.addEventListener('pointercancel', end);
+        };
+        bindTouch('t-up', 'w');
+        bindTouch('t-down', 's');
+        bindTouch('t-left', 'a');
+        bindTouch('t-right', 'd');
+        bindTouch('t-sprint', 'shift');
+        bindTouch('t-jump', 'space', true);
+        const tSit = document.getElementById('t-sit');
+        if (tSit) {
+          tSit.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            toggleSitOnSummit(true);
+          });
+        }
+      }
+
+      // =========================================================================
+      // 16. MAIN ANIMATION & GAME LOOP (True Camera-Relative Movement & Character Anim)
+      // =========================================================================
+      let lastFrame = performance.now();
+      let fpsFrames = 0;
+      let fpsLastCheck = performance.now();
+      let trailTick = 0;
+      const camForward = new THREE.Vector3();
+      const camRight = new THREE.Vector3();
+      const moveVec = new THREE.Vector3();
+      const upVec = new THREE.Vector3(0, 1, 0);
+
+      function animate() {
+        requestAnimationFrame(animate);
+        const now = performance.now();
+        const dt = Math.min(0.05, (now - lastFrame) / 1000);
+        lastFrame = now;
+        const elapsed = now * 0.001;
+
+        // Update Shaders
+        blackHoleMat.uniforms.uTime.value = elapsed;
+        waterMat.uniforms.uTime.value = elapsed;
+        grassMat.uniforms.uTime.value = elapsed;
+        skyStrokeMat.uniforms.uTime.value = elapsed;
+        if (mistMat) mistMat.uniforms.uTime.value = elapsed;
+
+        // Animate Landmarks & Parallax Sky Layers
+        if (windmillBlades) windmillBlades.rotation.z -= dt * (0.65 * REALMS[currentRealmIdx].windStrength);
+        if (lighthouseBeam) lighthouseBeam.rotation.y += dt * 0.7;
+
+        // Animate Summit Red Flag fluttering in the mountain wind
+        if (summitFlagMesh && summitFlagBasePos) {
+          const fp = summitFlagMesh.geometry.attributes.position;
+          const wind = REALMS[currentRealmIdx].windStrength;
+          for (let i = 0; i < fp.count; i++) {
+            const bx = summitFlagBasePos[i * 3];
+            const by = summitFlagBasePos[i * 3 + 1];
+            const t = bx / 1.9;
+            const waveZ = Math.sin(elapsed * (6.2 * wind) - t * 6.5) * 0.19 * t;
+            const waveY = Math.cos(elapsed * (4.1 * wind) - t * 4.0) * 0.05 * t;
+            fp.setXYZ(i, bx, by + waveY, waveZ);
+          }
+          fp.needsUpdate = true;
+          summitFlagMesh.geometry.computeVertexNormals();
+        }
+
+        const starsFar = scene.getObjectByName('starfieldFar');
+        const starsNear = scene.getObjectByName('starfieldNear');
+        if (starsFar) starsFar.rotation.y += dt * 0.003;
+        if (starsNear) starsNear.rotation.y += dt * 0.007;
+
+        if (dustParticles) {
+          dustParticles.rotation.y += dt * 0.018;
+          dustParticles.position.y = Math.sin(elapsed * 0.45) * 0.35;
+        }
+
+        // 1) TRUE CAMERA-RELATIVE MOVEMENT (Fixes all directional bugs + smooth acceleration)
+        const inputForward = (keys.w ? 1 : 0) - (keys.s ? 1 : 0);
+        const inputRight = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
+
+        camera.getWorldDirection(camForward);
+        camForward.y = 0;
+        if (camForward.lengthSq() < 0.0001) camForward.set(0, 0, -1);
+        camForward.normalize();
+        camRight.crossVectors(camForward, upVec).normalize();
+
+        moveVec.set(0, 0, 0);
+        moveVec.addScaledVector(camForward, inputForward);
+        moveVec.addScaledVector(camRight, inputRight);
+
+        const maxSpeed = keys.shift ? 13.5 : 7.6;
+        const hasInput = moveVec.lengthSq() > 0.001;
+
+        // Automatically stand up if player presses movement keys while sitting
+        if (player.isSitting && (hasInput || keys.space)) {
+          player.isSitting = false;
+          player.pos.z += 0.65;
+          document.getElementById('btn-summit').classList.remove('active');
+          document.getElementById('btn-summit').textContent = '▲ Đỉnh Núi (E)';
+        }
+
+        if (player.isSitting) {
+          const seat = getSummitSeatPos();
+          player.pos.lerp(seat, Math.min(1, dt * 8));
+          player.vel.set(0, 0, 0);
+          let diff = 0 - player.yaw;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          player.yaw += diff * Math.min(1, dt * 8);
+          player.onGround = true;
+        } else if (hasInput) {
+          moveVec.normalize();
+          const accel = Math.min(1, dt * 11);
+          player.vel.x += (moveVec.x * maxSpeed - player.vel.x) * accel;
+          player.vel.z += (moveVec.z * maxSpeed - player.vel.z) * accel;
+
+          // Smoothly rotate character to face travel direction (character front is -Z)
+          const targetYaw = Math.atan2(-moveVec.x, -moveVec.z);
+          let diff = targetYaw - player.yaw;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          player.yaw += diff * Math.min(1, dt * 12);
+        } else {
+          // Smooth friction deceleration
+          const decel = Math.min(1, dt * 10);
+          player.vel.x *= (1 - decel);
+          player.vel.z *= (1 - decel);
+        }
+
+        if (!player.isSitting) {
+          player.pos.x += player.vel.x * dt;
+          player.pos.z += player.vel.z * dt;
+
+          const rad = Math.hypot(player.pos.x, player.pos.z);
+          if (rad > 50) {
+            player.pos.x *= 50 / rad;
+            player.pos.z *= 50 / rad;
+          }
+
+          player.vel.y -= (singularityUnlocked ? 10.5 : 17.5) * dt;
+          player.pos.y += player.vel.y * dt;
+
+          const groundY = Math.max(-0.2, getTerrainHeight(player.pos.x, player.pos.z));
+          if (player.pos.y <= groundY) {
+            player.pos.y = groundY;
+            player.vel.y = 0;
+            player.onGround = true;
+          }
+        }
+
+        // Show proximity sit prompt near the Summit lookout
+        const nearSummit = Math.hypot(player.pos.x - SUMMIT_X, player.pos.z - SUMMIT_Z) < 6.2;
+        const sitPromptEl = document.getElementById('sit-prompt');
+        if (sitPromptEl) {
+          if (player.isSitting) {
+            sitPromptEl.innerHTML = 'Đang ngắm cảnh trên đỉnh núi • Nhấn <strong>[E]</strong> hoặc <strong>W A S D</strong> để đứng dậy';
+            sitPromptEl.classList.add('show');
+          } else if (nearSummit) {
+            sitPromptEl.innerHTML = 'Nhấn <strong>[E]</strong> để ngồi ngắm cảnh trên đỉnh núi';
+            sitPromptEl.classList.add('show');
+          } else {
+            sitPromptEl.classList.remove('show');
+          }
+        }
+
+        // 2) PROCEDURAL CHARACTER ANIMATION (Walk, Run, Jump, Idle Breathing & Cloth Cape)
+        const horizSpeed = Math.hypot(player.vel.x, player.vel.z);
+        player.speedRatio = Math.min(1.4, horizSpeed / 7.6);
+        playerGroup.position.copy(player.pos);
+        playerGroup.rotation.y = player.yaw;
+
+        sitBlend += ((player.isSitting ? 1 : 0) - sitBlend) * Math.min(1, dt * 7);
+
+        if (sitBlend > 0.05) {
+          // Relaxed seated pose dangling legs over the mountain ledge
+          bodyPivot.position.y = -0.44 * sitBlend + Math.sin(elapsed * 1.8) * 0.02;
+          bodyPivot.rotation.x = 0.08 * sitBlend;
+          // Legs bent forward (~82 deg) gently swaying in the mountain breeze
+          leftLeg.rotation.x = (1.32 + Math.sin(elapsed * 1.5) * 0.06) * sitBlend;
+          rightLeg.rotation.x = (1.26 + Math.cos(elapsed * 1.5) * 0.06) * sitBlend;
+          // Arms resting peacefully on knees / rock ledge
+          leftArm.rotation.x = 0.58 * sitBlend;
+          rightArm.rotation.x = 0.58 * sitBlend;
+          headGroup.rotation.x = 0.08 * sitBlend + Math.sin(elapsed * 0.9) * 0.03;
+          headGroup.rotation.y = Math.sin(elapsed * 0.55) * 0.14 * sitBlend;
+        } else if (player.onGround && horizSpeed > 0.25) {
+          headGroup.rotation.x *= Math.max(0, 1 - dt * 8);
+          headGroup.rotation.y *= Math.max(0, 1 - dt * 8);
+          player.walkCycle += dt * (7.0 + horizSpeed * 0.45);
+          const swing = Math.sin(player.walkCycle) * Math.min(0.85, 0.35 + player.speedRatio * 0.42);
+          leftLeg.rotation.x = swing;
+          rightLeg.rotation.x = -swing;
+          leftArm.rotation.x = -swing * 0.85;
+          rightArm.rotation.x = swing * 0.85;
+          // Natural stride bobbing + slight forward lean while running
+          bodyPivot.position.y = Math.abs(Math.cos(player.walkCycle)) * 0.09 * Math.min(1, player.speedRatio);
+          bodyPivot.rotation.x = -0.06 - player.speedRatio * 0.14;
+        } else if (!player.onGround) {
+          // Graceful low-gravity airborne pose
+          leftLeg.rotation.x += (0.35 - leftLeg.rotation.x) * Math.min(1, dt * 8);
+          rightLeg.rotation.x += (-0.25 - rightLeg.rotation.x) * Math.min(1, dt * 8);
+          leftArm.rotation.x += (-0.65 - leftArm.rotation.x) * Math.min(1, dt * 8);
+          rightArm.rotation.x += (-0.65 - rightArm.rotation.x) * Math.min(1, dt * 8);
+          bodyPivot.rotation.x += (-0.1 - bodyPivot.rotation.x) * Math.min(1, dt * 6);
+        } else {
+          // Gentle idle breathing
+          leftLeg.rotation.x *= Math.max(0, 1 - dt * 10);
+          rightLeg.rotation.x *= Math.max(0, 1 - dt * 10);
+          leftArm.rotation.x *= Math.max(0, 1 - dt * 10);
+          rightArm.rotation.x *= Math.max(0, 1 - dt * 10);
+          bodyPivot.position.y = Math.sin(elapsed * 2.2) * 0.035;
+          bodyPivot.rotation.x *= Math.max(0, 1 - dt * 8);
+        }
+
+        // Flowing Cloth Vertex Animation for Cape
+        if (capeMesh && capeBasePos) {
+          const cp = capeMesh.geometry.attributes.position;
+          const wind = REALMS[currentRealmIdx].windStrength;
+          const billow = 0.25 + player.speedRatio * 0.65;
+          for (let i = 0; i < cp.count; i++) {
+            const bx = capeBasePos[i * 3];
+            const by = capeBasePos[i * 3 + 1];
+            const t = Math.abs(by) / 1.55; // 0 at neck, 1 at hem
+            const waveZ = Math.sin(elapsed * (4.5 + player.speedRatio * 4.0) - t * 5.2 + bx * 3.0) * 0.16 * t * wind;
+            const liftZ = t * t * billow * 0.72;
+            const liftY = t * t * billow * 0.22;
+            cp.setXYZ(i, bx, by + liftY, liftZ + waveZ);
+          }
+          cp.needsUpdate = true;
+          capeMesh.geometry.computeVertexNormals();
+        }
+
+        if (scarfMesh) {
+          scarfMesh.rotation.x = 0.25 + player.speedRatio * 0.5 + Math.sin(elapsed * 5.2) * 0.18;
+          scarfMesh.rotation.z = Math.cos(elapsed * 3.6) * 0.15;
+        }
+
+        if (companionOrb) {
+          companionOrb.position.set(
+            0.72 + Math.sin(elapsed * 1.6) * 0.14,
+            2.05 + Math.sin(elapsed * 2.4) * 0.18,
+            0.12 + Math.cos(elapsed * 1.4) * 0.14
+          );
+          companionOrb.rotation.y = elapsed * 1.8;
+        }
+
+        // Update luminous trail behind running character
+        trailTick += dt;
+        if (trailTick > 0.035 && trailMesh) {
+          trailTick = 0;
+          const arr = trailPositions;
+          for (let i = arr.length - 3; i >= 3; i -= 3) {
+            arr[i] = arr[i - 3];
+            arr[i + 1] = arr[i - 2] + 0.012;
+            arr[i + 2] = arr[i - 1];
+          }
+          arr[0] = player.pos.x + (Math.random() - 0.5) * 0.3;
+          arr[1] = player.pos.y + 1.05;
+          arr[2] = player.pos.z + (Math.random() - 0.5) * 0.3;
+          trailMesh.geometry.attributes.position.needsUpdate = true;
+          trailMesh.material.opacity = 0.22 + Math.min(0.65, player.speedRatio * 0.5);
+        }
+
+        grassMat.uniforms.uPlayerPos.value.copy(player.pos);
+
+        if (wirePlayerMarker) {
+          wirePlayerMarker.position.set(player.pos.x, player.pos.y + 1.4, player.pos.z);
+          wirePlayerMarker.rotation.y = elapsed * 1.5;
+        }
+
+        // 3) UPDATE & COLLECT LUMEN SHARDS
+        for (let i = 0; i < shards.length; i++) {
+          const s = shards[i];
+          if (s.collected) continue;
+          s.group.position.y = s.baseY + Math.sin(elapsed * 2.2 + i) * 0.35;
+          s.crystal.rotation.y = elapsed * 1.6 + i;
+          s.crystal.rotation.x = Math.sin(elapsed + i) * 0.4;
+
+          if (player.pos.distanceTo(s.group.position) < 2.7) {
+            s.collected = true;
+            s.group.visible = false;
+            collectedCount++;
+            document.getElementById('shard-counter').textContent = `✦ ${collectedCount} / 12`;
+            audio.playCollect(collectedCount);
+            showToast(`MẢNH ÁNH SÁNG #${collectedCount} / 12`, SHARD_LORE[collectedCount - 1]);
+            blackHoleMat.uniforms.uBloomBoost.value = 1.0 + collectedCount * 0.045;
+
+            if (collectedCount >= 12 && !singularityUnlocked) {
+              singularityUnlocked = true;
+              bloomBurstParticles.material.opacity = 0.92;
+              setTimeout(() => {
+                clearAllKeys();
+                document.getElementById('modal-title').textContent = 'SINGULARITY BLOOM!';
+                document.getElementById('modal-desc').innerHTML =
+                  'Bạn đã thu thập đủ <strong>12/12 Mảnh Ánh Sáng</strong>! Đĩa bồi tụ đã đạt cực đại phát sáng và chế độ <em>Lướt Không Trọng Lực (Zero-G Jump)</em> đã được mở khóa.';
+                document.getElementById('btn-start').textContent = 'CHƠI LẠI BỘ MẢNH ÁNH SÁNG';
+                document.getElementById('modal-backdrop').classList.remove('hidden');
+              }, 1600);
+            }
+          }
+        }
+
+        if (singularityUnlocked && bloomBurstParticles) {
+          bloomBurstParticles.rotation.y += dt * 0.14;
+        }
+
+        // 4) CINEMATIC DEPTH CAMERA (Fixed symmetric lookAt + dynamic sprint FOV)
+        if (cinematicMode) {
+          camYaw += dt * 0.22;
+        }
+        const dynamicFov = targetFov + (keys.shift && hasInput ? 4.5 : 0);
+        camera.fov += (dynamicFov - camera.fov) * Math.min(1, dt * 5);
+        camera.updateProjectionMatrix();
+
+        // Orbit smoothly around character shoulder/head height so horizon & black hole tower majestically ahead
+        // Cinematic off-center framing when sitting on the summit so character + red flag frame the Black Hole
+        const sitOffsetSide = 1.65 * sitBlend;
+        const pivotX = player.pos.x + Math.cos(camYaw) * sitOffsetSide;
+        const pivotY = player.pos.y + 1.95 - 0.35 * sitBlend;
+        const pivotZ = player.pos.z - Math.sin(camYaw) * sitOffsetSide;
+
+        const effectiveDist = camDist * (1.0 + 0.18 * sitBlend);
+        const desiredCamX = pivotX + Math.sin(camYaw) * Math.cos(camPitch) * effectiveDist;
+        const desiredCamZ = pivotZ + Math.cos(camYaw) * Math.cos(camPitch) * effectiveDist;
+        const camGround = getTerrainHeight(desiredCamX, desiredCamZ);
+        const desiredCamY = Math.max(camGround + 1.1, pivotY + Math.sin(camPitch) * effectiveDist);
+
+        const lookAheadDist = 4.5 + 3.5 * sitBlend;
+        const desiredLookX = pivotX - Math.sin(camYaw) * lookAheadDist;
+        const desiredLookY = pivotY + 0.55 + 0.35 * sitBlend;
+        const desiredLookZ = pivotZ - Math.cos(camYaw) * lookAheadDist;
+
+        const camLerp = Math.min(1, dt * 9);
+        smoothCamPos.lerp(new THREE.Vector3(desiredCamX, desiredCamY, desiredCamZ), camLerp);
+        smoothLookAt.lerp(new THREE.Vector3(desiredLookX, desiredLookY, desiredLookZ), camLerp);
+
+        camera.position.copy(smoothCamPos);
+        camera.lookAt(smoothLookAt);
+
+        // 5) RENDER (Full or X-Ray Wireframe Split)
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (splitMode) {
+          const splitX = Math.floor(w * splitRatio);
+          renderer.setScissorTest(true);
+
+          renderer.setScissor(0, 0, splitX, h);
+          renderer.setViewport(0, 0, w, h);
+          renderer.render(wireScene, camera);
+
+          renderer.setScissor(splitX, 0, w - splitX, h);
+          renderer.setViewport(0, 0, w, h);
+          renderer.render(scene, camera);
+
+          renderer.setScissorTest(false);
+        } else {
+          renderer.setScissorTest(false);
+          renderer.setViewport(0, 0, w, h);
+          renderer.render(scene, camera);
+        }
+
+        // 6) TELEMETRY HUD
+        fpsFrames++;
+        if (now - fpsLastCheck >= 450) {
+          const fps = Math.round((fpsFrames * 1000) / (now - fpsLastCheck));
+          document.getElementById('tel-fps').textContent = fps;
+          fpsFrames = 0;
+          fpsLastCheck = now;
+
+          const alt = Math.max(0, player.pos.y + 0.35).toFixed(2);
+          document.getElementById('tel-alt').textContent = `${alt} M`;
+
+          const rs = (REALMS[currentRealmIdx].rsBase + player.pos.z * 0.08).toFixed(1);
+          document.getElementById('tel-rs').textContent = `${rs} Rs`;
+
+          const secTotal = Math.floor((now - startTimeMs) / 1000);
+          const hh = String(Math.floor(secTotal / 3600)).padStart(2, '0');
+          const mm = String(Math.floor((secTotal % 3600) / 60)).padStart(2, '0');
+          const ss = String(secTotal % 60).padStart(2, '0');
+          document.getElementById('tel-time').textContent = `${hh}:${mm}:${ss}`;
+        }
+      }
+
+      window.onload = initEngine;
+    })();
+  </script>
+</body>
+</html>
